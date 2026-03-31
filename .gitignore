@@ -1,3 +1,5 @@
 server
 main
+hello
+-std=c++17
 *.o
