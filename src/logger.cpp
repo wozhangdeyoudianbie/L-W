@@ -3,6 +3,7 @@
 #include<iomanip>
 #include<sstream>
 #include<ctime>
+#include "logger.h"
 
 Logger::Logger()
 {
