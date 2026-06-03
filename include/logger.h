@@ -1,37 +1,34 @@
 #ifndef LOGGER_H
 #define LOGGER_H
 
-#include<iostream>
-#include<string>
-#include<fstream>
-#include<mutex>
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <mutex>
 
 using namespace std;
 
-#define endl '\n'
-
-enum class Log_level//日志级别（Log Level，日志等级）
-{
-    INFO,
-    WARNING,
-    ERROR
-};
-
 class Logger
 {
-public:
-    Logger();
-    ~Logger();
-
-    bool init(const string &file_name);//file_name（File Name，文件名）
-    void write_log(Log_level level, const string &message);//message（Message，消息内容）
-    void flush();
+private:
+    ofstream log_file;          // 日志文件输出流
+    mutex mtx;                  // 保护日志文件，防止多个线程同时写日志
 
 private:
-    ofstream fout;//fout（File Output Stream，文件输出流）
-    mutex mtx;//mtx（Mutex，互斥锁）
-    string get_time_stamp();//time_stamp（Time Stamp，时间戳）
-    string level_to_string(Log_level level);
+    Logger() = default;         // 构造函数私有化，配合单例使用
+    string get_current_time();  // 获取当前时间字符串
+
+public:
+    static Logger& get_instance();
+
+    bool init(const string& file_name);
+    void write_log(const string& level, const string& message);
+    void flush();
+
+    Logger(const Logger&) = delete;
+    Logger& operator=(const Logger&) = delete;
+
+    ~Logger();
 };
 
 #endif
