@@ -1,5 +1,6 @@
+build/
+logs/
 server
-main
--std=c++17
+server.log
+test_http
 *.o
-*.log

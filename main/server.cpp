@@ -8,12 +8,14 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
-#include "include/logger.h"
-#include "include/thread_pool.h"
+#include "logger.h"
+#include "thread_pool.h"
 #include <signal.h>
 #include <sstream>
 #include <unordered_map>
 #include <mutex>
+#include "http.h"
+#include "router.h"
 
 using namespace std;
 #define endl '\n'
@@ -25,33 +27,6 @@ const int THREAD_COUNT = 4;
 const int MAX_HTTP_HEADER_SIZE = 8192;
 unordered_map<int, string> client_buffers;
 mutex client_buffers_mutex;
-
-struct HttpRequest
-{
-    string method;
-    string path;
-    string version;
-    bool valid = false;
-};
-
-HttpRequest parse_http_request(const string &request_text)
-{
-    HttpRequest request;
-    size_t line_end = request_text.find("\r\n");
-    if (line_end == string::npos)
-    {
-        return request;
-    }
-    string request_line = request_text.substr(0, line_end);
-    stringstream ss(request_line);
-    ss >> request.method >> request.path >> request.version;
-    if (request.method.empty() || request.path.empty() || request.version.empty())
-    {
-        return request;
-    }
-    request.valid = true;
-    return request;
-}
 
 void init_client_buffer(int client_fd)
 {
@@ -69,92 +44,6 @@ void append_client_buffer(int client_fd, const char *data, ssize_t len)
 {
     lock_guard<mutex> lock(client_buffers_mutex);
     client_buffers[client_fd].append(data, len);
-}
-
-bool http_header_complate(const string &request_text)
-{
-    return request_text.find("\r\n\r\n") != string::npos;
-}
-
-string build_http_response(int status_code, const string &status_text, const string &body, const string &content_type, const string &extra_header = "")
-{
-    string response;
-    response += "HTTP/1.1 " + to_string(status_code) + " " + status_text + "\r\n";
-    response += "Content-Type: " + content_type + "\r\n";
-    response += "Content-Length: " + to_string(body.size()) + "\r\n";
-    if (!extra_header.empty())
-    {
-        response += extra_header;
-    }
-    response += "Connection: close\r\n";
-    response += "\r\n";
-    response += body;
-    return response;
-}
-
-string build_response_by_request(const string &request_text)
-{
-    HttpRequest request;
-    request = parse_http_request(request_text);
-    if (!request.valid)
-    {
-        string body = "400 Bad Request\n";
-        return build_http_response(400, "Bad Request", body, "text/plain; charset=utf-8"
-        );
-    }
-    Logger::get_instance().write_log(
-        "INFO",
-        "解析HTTP请求：method = " + request.method +
-        "，path = " + request.path +
-        "，version = " + request.version);
-    if (request.method != "GET")
-    {
-        string body = "405 Method Not Allowed\n";
-        return build_http_response(
-            405,
-            "Method Not Allowed",
-            body,
-            "text/plain; charset=utf-8"
-        );
-    }
-    if (request.path == "/")
-    {
-        string body;
-        body += "<!DOCTYPE html>\n";
-        body += "<html>\n";
-        body += "<head>\n";
-        body += "    <meta charset=\"UTF-8\">\n";
-        body += "    <title>My C++ WebServer</title>\n";
-        body += "</head>\n";
-        body += "<body>\n";
-        body += "    <h1>你好，这是我的 C++ WebServer</h1>\n";
-        body += "    <p>HTTP 第一阶段已经跑通。</p>\n";
-        body += "</body>\n";
-        body += "</html>\n";
-        return build_http_response(
-            200,
-            "OK",
-            body,
-            "text/html; charset=utf-8"
-        );
-    }
-    if (request.path == "/hello")
-    {
-        string body = "hello from C++ WebServer\n";
-        return build_http_response(
-            200,
-            "OK",
-            body,
-            "text/plain; charset=utf-8"
-        );
-    }
-    string body = "404 Not Found\n";
-    return build_http_response(
-        404,
-        "Not Found",
-        body,
-        "text/plain; charset=utf-8"
-    );
 }
 
 string get_client_buffer(int client_fd)
@@ -291,15 +180,15 @@ void handle_client(int epoll_fd, int client_fd)
                 string body = "431 Request Header Fields Too Large\n";
                 string response = build_http_response(
                     431,
-                    "Request Header Fields Too Large",
                     body,
-                    "text/plain; charset=utf-8"
+                    "text/plain; charset=utf-8",
+                    false
                 );
                 write_all(client_fd, response);
                 close_client(epoll_fd, client_fd);
                 return;
             }
-            if (http_header_complate(request_text))
+            if (http_header_complete(request_text))
             {
                 need_response = true;
                 break;
@@ -410,7 +299,7 @@ int main()
     cin.tie(0)->sync_with_stdio(0);
     cout.tie(0);
     signal(SIGPIPE, SIG_IGN);
-    if (!Logger::get_instance().init("server.log"))
+    if (!Logger::get_instance().init("logs/server.log"))
     {
         cout << "日志初始化失败" << endl;
         return 1;
@@ -512,8 +401,6 @@ int main()
     Logger::get_instance().flush();
     return 0;
 }
-
-
 
 
 
