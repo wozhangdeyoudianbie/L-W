@@ -18,6 +18,8 @@
 #include <mutex>
 #include "http.h"
 #include "router.h"
+#include "connection.h"
+#include <memory>
 
 using namespace std;
 #define endl '\n'
@@ -27,35 +29,37 @@ const int MAX_EVENTS = 1024;
 const int BUFFER_SIZE = 4096;
 const int THREAD_COUNT = 4;
 const int MAX_HTTP_HEADER_SIZE = 8192;
-unordered_map<int, string> client_buffers;
-mutex client_buffers_mutex;
+unordered_map<int, shared_ptr<Connection>> connections;
+mutex connections_mutex;
 
-void init_client_buffer(int client_fd)
+void add_connection(int client_fd)
 {
-    lock_guard<mutex> lock(client_buffers_mutex);
-    client_buffers[client_fd] = "";
+    lock_guard<mutex> lock(connections_mutex);
+    connections[client_fd] = make_shared<Connection>(client_fd);
 }
 
-void erase_client_buffer(int client_fd)
+shared_ptr<Connection> get_connection(int client_fd)
 {
-    lock_guard<mutex> lock(client_buffers_mutex);
-    client_buffers.erase(client_fd);
-}
-
-void append_client_buffer(int client_fd, const char *data, ssize_t len)
-{
-    lock_guard<mutex> lock(client_buffers_mutex);
-    client_buffers[client_fd].append(data, len);
-}
-
-string get_client_buffer(int client_fd)
-{
-    lock_guard<mutex> lock(client_buffers_mutex);
-    if (client_buffers.count(client_fd) == 0)
+    lock_guard<mutex> lock(connections_mutex);
+    auto it = connections.find(client_fd);
+    if (it == connections.end())
     {
-        return "";
+        return nullptr;
     }
-    return client_buffers[client_fd];
+    return it->second;
+}
+
+shared_ptr<Connection> remove_connection(int client_fd)
+{
+    lock_guard<mutex> lock(connections_mutex);
+    auto it = connections.find(client_fd);
+    if (it == connections.end())
+    {
+        return nullptr;
+    }
+    shared_ptr<Connection> conn = it->second;
+    connections.erase(it);
+    return conn;
 }
 
 int set_non_blocking(int fd)
@@ -91,12 +95,16 @@ bool add_fd_to_epoll(int epoll_fd, int fd, bool one_shot)
     return true;
 }
 
-bool reset_oneshot(int epoll_fd, int fd)
+bool reset_oneshot(int epoll_fd, int fd, bool need_write)
 {
     epoll_event event;
     memset(&event, 0, sizeof(event));
     event.data.fd = fd;
     event.events = EPOLLIN | EPOLLET | EPOLLONESHOT | EPOLLRDHUP;
+    if (need_write)
+    {
+        event.events |= EPOLLOUT;
+    }
     if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &event) == -1)
     {
         Logger::get_instance().write_log(
@@ -112,131 +120,93 @@ bool reset_oneshot(int epoll_fd, int fd)
 void close_client(int epoll_fd, int client_fd)
 {
     epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, nullptr);
-    erase_client_buffer(client_fd);
-    close(client_fd);
+    shared_ptr<Connection> conn = remove_connection(client_fd);
+    if (conn)
+    {
+        conn->close_connection();
+    }
     Logger::get_instance().write_log(
-        "INFO",
-        "客户端连接关闭，fd = "
-        + to_string(client_fd)
+    "INFO",
+    "客户端连接关闭，fd = "
+    + to_string(client_fd)
     );
 }
 
-bool write_all(int client_fd, const string &response)
+void handle_write(int epoll_fd, int client_fd)
 {
-    const char *data = response.c_str();
-    ssize_t left = response.size();
-    while (left > 0)
+    shared_ptr<Connection> conn = get_connection(client_fd);
+    if (!conn)
     {
-        ssize_t write_len = write(client_fd, data, left);
-        if (write_len > 0)
-        {
-            data += write_len;
-            left -= write_len;
-        }
-        else if (write_len == -1 && errno == EINTR)
-        {
-            continue;
-        }
-        else if (write_len == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
-        {
-            Logger::get_instance().write_log(
-               "WARNING",
-               "发送缓冲区暂时不可用，fd = " +
-               to_string(client_fd)
-            );
-            return false;
-        }
-        else
-        {
-            Logger::get_instance().write_log(
-                "ERROR",
-                "向客户端写HTTP响应失败，fd = " + to_string(client_fd) +
-                "，错误 = " + string(strerror(errno))
-            );
-            return false;
-        }
+        return;
     }
-    return true;
-}
-
-void handle_client(int epoll_fd, int client_fd)
-{
-    char buffer[BUFFER_SIZE];
-    bool  client_closed = false;
-    bool need_response = false;
-    while (true)
+    if (!conn->write_to_socket())
     {
-        ssize_t read_len = read(client_fd, buffer, sizeof(buffer));
-        if (read_len > 0)
-        {
-            append_client_buffer(client_fd, buffer, read_len);
-            string message(buffer, read_len);
-            Logger::get_instance().write_log(
-                "INFO",
-                "收到客户端HTTP数据，fd = "
-                + to_string(client_fd)
-                + "， 字节数 = " + to_string(read_len));
-            string request_text = get_client_buffer(client_fd);
-            if ((int)request_text.size() > MAX_HTTP_HEADER_SIZE)
-            {
-                string body = "431 Request Header Fields Too Large\n";
-                string response = build_http_response(
-                    431,
-                    body,
-                    "text/plain; charset=utf-8",
-                    false
-                );
-                write_all(client_fd, response);
-                close_client(epoll_fd, client_fd);
-                return;
-            }
-            if (http_header_complete(request_text))
-            {
-                need_response = true;
-                break;
-            }
-        }
-        else if (read_len == 0)
-        {
-            client_closed = true;
-            break;
-        }
-        else
-        {
-            if (errno == EINTR)
-            {
-                continue;
-            }
-            else if (errno == EAGAIN || errno == EWOULDBLOCK)
-            {
-                break;
-            }
-            Logger::get_instance().write_log(
-                "ERROR",
-                 "读取客户端HTTP数据失败"
-                + to_string(client_fd)
-                + "，错误 = " + string(strerror(errno))
-            );
-            client_closed = true;
-            break;
-        }
-    }
-    if (need_response)
-    {
-        string request_text = get_client_buffer(client_fd);
-        string response = build_response_by_request(request_text);
-        write_all(client_fd, response);
+        Logger::get_instance().write_log("ERROR", "发送连接数据失败，fd = " + to_string(client_fd));
         close_client(epoll_fd, client_fd);
         return;
     }
-    if (client_closed)
+    std::string write_buffer = conn->write_buffer();
+    if (conn->write_buffer().empty())
     {
         close_client(epoll_fd, client_fd);
         return;
     }
     else
     {
-        reset_oneshot(epoll_fd, client_fd);
+        if (!reset_oneshot(epoll_fd, client_fd, true))
+        {
+            close_client(epoll_fd, client_fd);
+            return;
+        }
+    }
+}
+
+void handle_client(int epoll_fd, int client_fd)
+{
+    shared_ptr<Connection> conn = get_connection(client_fd);
+    if (!conn)
+    {
+        return;
+    }
+    if (!conn->read_from_socket())
+    {
+        close_client(epoll_fd, client_fd);
+        return;
+    }
+    string &request_text = conn->read_buffer();
+    // Logger::get_instance().write_log(
+    //     "INFO",
+    //     "收到客户端HTTP数据,fd = "
+    //     + to_string(client_fd)
+    //     + ", 字节数 = " + to_string(read_len));
+    if ((int)request_text.size() > MAX_HTTP_HEADER_SIZE)
+    {
+        Logger::get_instance().write_log(
+        "WARNING",
+        "HTTP请求头过大，fd = " + to_string(client_fd)
+        );
+        string body = "431 Request Header Fields Too Large\n";
+        string response = build_http_response(
+            431,
+            body,
+            "text/plain; charset=utf-8",
+            false
+        );
+        conn->append_write_buffer(response);
+        handle_write(epoll_fd, client_fd);
+        return;
+    }
+    if (http_header_complete(request_text))
+    {
+        string response = build_response_by_request(request_text);
+        conn->append_write_buffer(response);
+        handle_write(epoll_fd, client_fd);
+        return;
+    }
+    if (!reset_oneshot(epoll_fd, client_fd, false))
+    {
+        close_client(epoll_fd, client_fd);
+        return;
     }
 }
 
@@ -269,12 +239,16 @@ void accept_client(int epoll_fd, int server_fd)
             close(client_fd);
             continue;
         }
+        add_connection(client_fd);
         if (!add_fd_to_epoll(epoll_fd, client_fd, true))
         {
-            close(client_fd);
+            shared_ptr<Connection> conn = remove_connection(client_fd);
+            if (conn)
+            {
+                conn->close_connection();
+            }
             continue;
         }
-
         char ip[INET_ADDRSTRLEN];
         const char *result = inet_ntop(AF_INET, &client_addr.sin_addr, ip, sizeof(ip));
         if (result == nullptr)
@@ -356,7 +330,6 @@ int main()
         close(epoll_fd);
         return 1;
     }
-
     ThreadPool pool(THREAD_COUNT);
     vector<epoll_event> events(MAX_EVENTS);
     Logger::get_instance().write_log("INFO", "服务器开始监听端口 " + to_string(PORT));
@@ -383,6 +356,13 @@ int main()
             else if (event_type & (EPOLLERR | EPOLLHUP))
             {
                 close_client(epoll_fd, fd);
+            }
+            else if (event_type & EPOLLOUT)
+            {
+                pool.add_task([epoll_fd, fd]()
+                {
+                    handle_write(epoll_fd, fd);
+                });
             }
             else if (event_type & EPOLLIN)
             {
