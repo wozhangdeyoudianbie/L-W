@@ -20,6 +20,7 @@ public:
     void append_write_buffer(const std::string &data);
     bool read_from_socket();
     bool write_to_socket();
+    bool peer_eof() const;
     void close_connection();
 private:
     int fd_;
@@ -27,6 +28,7 @@ private:
     std::string read_buffer_;
     std::string write_buffer_;
     time_t last_active_;
+    bool peer_eof_;
 };
 
 #endif

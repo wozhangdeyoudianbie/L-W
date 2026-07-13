@@ -4,3 +4,4 @@ server
 server.log
 test_http
 *.o
+.vscode/

@@ -10,7 +10,7 @@ struct HttpRequest
     string version;
     unordered_map<string, string> headers;
     string body;
-    bool keep_alive = false; // 是否保持长连接
+    bool keep_alive = false;
 };
 
 bool http_header_complete(const string &request_text);

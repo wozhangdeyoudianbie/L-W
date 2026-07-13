@@ -95,12 +95,16 @@ bool add_fd_to_epoll(int epoll_fd, int fd, bool one_shot)
     return true;
 }
 
-bool reset_oneshot(int epoll_fd, int fd, bool need_write)
+bool reset_oneshot(int epoll_fd, int fd, bool need_read, bool need_write)
 {
     epoll_event event;
     memset(&event, 0, sizeof(event));
     event.data.fd = fd;
-    event.events = EPOLLIN | EPOLLET | EPOLLONESHOT | EPOLLRDHUP;
+    event.events = EPOLLET | EPOLLONESHOT;
+    if (need_read)
+    {
+        event.events |= EPOLLIN | EPOLLRDHUP;
+    }
     if (need_write)
     {
         event.events |= EPOLLOUT;
@@ -145,19 +149,17 @@ void handle_write(int epoll_fd, int client_fd)
         close_client(epoll_fd, client_fd);
         return;
     }
-    std::string write_buffer = conn->write_buffer();
-    if (conn->write_buffer().empty())
+    bool need_read = !conn->peer_eof();
+    bool need_write = !conn->write_buffer().empty();
+    if (!need_read && !need_write)//conn->peer_eof() && conn->write_buffer().empty()
     {
         close_client(epoll_fd, client_fd);
         return;
     }
-    else
+    if (!reset_oneshot(epoll_fd, client_fd, need_read, need_write))
     {
-        if (!reset_oneshot(epoll_fd, client_fd, true))
-        {
-            close_client(epoll_fd, client_fd);
-            return;
-        }
+        close_client(epoll_fd, client_fd);
+        return;
     }
 }
 
@@ -173,41 +175,17 @@ void handle_client(int epoll_fd, int client_fd)
         close_client(epoll_fd, client_fd);
         return;
     }
-    string &request_text = conn->read_buffer();
-    // Logger::get_instance().write_log(
-    //     "INFO",
-    //     "收到客户端HTTP数据,fd = "
-    //     + to_string(client_fd)
-    //     + ", 字节数 = " + to_string(read_len));
-    if ((int)request_text.size() > MAX_HTTP_HEADER_SIZE)
+    std::string &data = conn->read_buffer();
+    if (!data.empty())
     {
         Logger::get_instance().write_log(
-        "WARNING",
-        "HTTP请求头过大，fd = " + to_string(client_fd)
-        );
-        string body = "431 Request Header Fields Too Large\n";
-        string response = build_http_response(
-            431,
-            body,
-            "text/plain; charset=utf-8",
-            false
-        );
-        conn->append_write_buffer(response);
-        handle_write(epoll_fd, client_fd);
-        return;
+            "INFO",
+            "收到客户端TCP数据，fd = " + to_string(client_fd) +
+            "，字节数 = " + to_string(data.size()));
+        conn->append_write_buffer(data);
+        data.clear();
     }
-    if (http_header_complete(request_text))
-    {
-        string response = build_response_by_request(request_text);
-        conn->append_write_buffer(response);
-        handle_write(epoll_fd, client_fd);
-        return;
-    }
-    if (!reset_oneshot(epoll_fd, client_fd, false))
-    {
-        close_client(epoll_fd, client_fd);
-        return;
-    }
+    handle_write(epoll_fd, client_fd);
 }
 
 void accept_client(int epoll_fd, int server_fd)
@@ -353,9 +331,16 @@ int main()
             {
                 accept_client(epoll_fd, server_fd);
             }
-            else if (event_type & (EPOLLERR | EPOLLHUP))
+            else if (event_type & EPOLLERR)
             {
                 close_client(epoll_fd, fd);
+            }
+            else if (event_type & (EPOLLIN | EPOLLRDHUP))
+            {
+                pool.add_task([epoll_fd, fd]()
+                {
+                    handle_client(epoll_fd, fd);
+                });
             }
             else if (event_type & EPOLLOUT)
             {
@@ -364,14 +349,7 @@ int main()
                     handle_write(epoll_fd, fd);
                 });
             }
-            else if (event_type & EPOLLIN)
-            {
-                pool.add_task([epoll_fd, fd]()
-                {
-                    handle_client(epoll_fd, fd);
-                });
-            }
-            else if (event_type & EPOLLRDHUP)
+            else if (event_type & EPOLLHUP)
             {
                 close_client(epoll_fd, fd);
             }

@@ -19,7 +19,6 @@ static string trim(const string &s)
     }
     return s.substr(left, right - left);
 }
-
 // 根据状态码返回状态描述
 static string reason_phrase(int status_code)
 {
@@ -37,13 +36,11 @@ static string reason_phrase(int status_code)
         return "Internal Server Error";
     return "Unknown";
 }
-
 // HTTP 请求头结束标志：\r\n\r\n
 bool http_header_complete(const string &request_text)
 {
     return request_text.find("\r\n\r\n") != string::npos;
 }
-
 // 解析 HTTP 请求
 bool parse_http_request(const string &request_text, HttpRequest &request)
 {

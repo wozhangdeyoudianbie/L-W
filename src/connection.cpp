@@ -5,7 +5,7 @@
 #include <ctime>
 
 Connection::Connection(int fd)
-    :fd_(fd), close_(false), last_active_(std::time(nullptr))
+    :fd_(fd), close_(false), last_active_(std::time(nullptr)), peer_eof_(false)
 {
 }
 
@@ -44,6 +44,11 @@ const std::string &Connection::write_buffer() const
     return write_buffer_;
 }
 
+bool Connection::peer_eof() const
+{
+    return peer_eof_;
+}
+
 void Connection::append_write_buffer(const std::string &data)
 {
     write_buffer_ += data;
@@ -62,8 +67,8 @@ bool Connection::read_from_socket()
         }
         else if (n == 0)
         {
-            // close_connection();
-            return false;
+            peer_eof_ = true;
+            return true;
         }
         else
         {
@@ -75,7 +80,6 @@ bool Connection::read_from_socket()
             {
                 return true;
             }
-            // close_connection();
             return false;
         }
     }
