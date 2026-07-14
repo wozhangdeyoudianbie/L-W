@@ -29,17 +29,17 @@ time_t Connection::last_active() const
     return last_active_;
 }
 
-std::string &Connection::read_buffer()
+Buffer &Connection::read_buffer()
 {
     return read_buffer_;
 }
 
-const std::string &Connection::read_buffer() const
+const Buffer &Connection::read_buffer() const
 {
     return read_buffer_;
 }
 
-const std::string &Connection::write_buffer() const
+const Buffer &Connection::write_buffer() const
 {
     return write_buffer_;
 }
@@ -51,7 +51,12 @@ bool Connection::peer_eof() const
 
 void Connection::append_write_buffer(const std::string &data)
 {
-    write_buffer_ += data;
+    write_buffer_.append(data);
+}
+
+void Connection::append_write_buffer(const char *data, std::size_t len)
+{
+    write_buffer_.append(data, len);
 }
 
 bool Connection::read_from_socket()
@@ -89,10 +94,10 @@ bool Connection::write_to_socket()
 {
     while (!write_buffer_.empty())
     {
-        ssize_t n = write(fd_, write_buffer_.data(), write_buffer_.size());
+        ssize_t n = write(fd_, write_buffer_.peek(), write_buffer_.readable_bytes());
         if (n > 0)
         {
-            write_buffer_.erase(0, n);
+            write_buffer_.retrieve(n);
             last_active_ = std::time(nullptr);
         }
         else if (n == 0)
@@ -110,7 +115,7 @@ bool Connection::write_to_socket()
                 Logger::get_instance().write_log(
                 "INFO",
                 "写缓冲区暂时不可写，fd = " + std::to_string(fd_) +
-                "，剩余字节 = " + std::to_string(write_buffer_.size()));
+                "，剩余字节 = " + std::to_string(write_buffer_.readable_bytes()));
                 return true;
             }
             // close_connection();

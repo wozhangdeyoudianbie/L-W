@@ -175,15 +175,16 @@ void handle_client(int epoll_fd, int client_fd)
         close_client(epoll_fd, client_fd);
         return;
     }
-    std::string &data = conn->read_buffer();
+    Buffer &data = conn->read_buffer();
     if (!data.empty())
     {
+        std::size_t len = data.readable_bytes();
         Logger::get_instance().write_log(
             "INFO",
             "收到客户端TCP数据，fd = " + to_string(client_fd) +
-            "，字节数 = " + to_string(data.size()));
-        conn->append_write_buffer(data);
-        data.clear();
+            "，字节数 = " + to_string(len));
+        conn->append_write_buffer(data.peek(), len);
+        data.retrieve(len);
     }
     handle_write(epoll_fd, client_fd);
 }
