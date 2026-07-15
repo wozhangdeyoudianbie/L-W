@@ -28,13 +28,8 @@ int main()
     assert(loop.valid());
     assert(loop.is_in_loop_thread());
 
-    const uint32_t event_mask =
-        EPOLLIN | EPOLLET | EPOLLONESHOT;
+    const uint32_t event_mask = EPOLLIN | EPOLLET | EPOLLONESHOT;
 
-    /*
-     * 默认构造的 std::function 里面没有保存函数。
-     * 因此 !empty_callback 为 true，add_fd 必须拒绝它。
-     */
     EventLoop::EventCallback empty_callback;
 
     assert(!loop.add_fd(
@@ -60,10 +55,6 @@ int main()
         assert(callback_count <= 2);
         assert((event_type & EPOLLIN) != 0);
 
-        /*
-         * 当前已经位于外层 loop() 中。
-         * 再次调用必须被 looping_ 拒绝。
-         */
         bool nested_loop_result = loop.loop();
 
         assert(!nested_loop_result);
@@ -107,10 +98,6 @@ int main()
 
         if (callback_count == 1)
         {
-            /*
-             * EPOLLONESHOT 已经使 read_fd 暂时失效。
-             * update_fd 使用 EPOLL_CTL_MOD 重新激活它。
-             */
             bool update_result =
                 loop.update_fd(read_fd, event_mask);
 
@@ -128,9 +115,6 @@ int main()
             return;
         }
 
-        /*
-         * 第二次回调证明重新激活成功。
-         */
         assert(callback_count == 2);
 
         bool remove_result =
@@ -143,17 +127,11 @@ int main()
 
     assert(add_result);
 
-    /*
-     * read_fd 已经注册，重复添加必须失败。
-     */
     assert(!loop.add_fd(
         read_fd,
         event_mask,
         [](uint32_t) {}));
 
-    /*
-     * write_fd 没有注册，更新和删除必须失败。
-     */
     assert(!loop.update_fd(write_fd, EPOLLOUT));
     assert(!loop.remove_fd(write_fd));
 

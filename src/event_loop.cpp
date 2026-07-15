@@ -30,7 +30,7 @@ bool EventLoop::is_in_loop_thread() const
 
 bool EventLoop::add_fd(int fd, uint32_t events, EventCallback callback)
 {
-    if (!valid() || !callback)
+    if (!valid() || fd < 0 || !callback)
     {
         return false;
     }
@@ -55,7 +55,7 @@ bool EventLoop::add_fd(int fd, uint32_t events, EventCallback callback)
 
 bool EventLoop::update_fd(int fd, uint32_t events)
 {
-    if (!valid())
+    if (!valid() || fd < 0)
     {
         return false;
     }
@@ -79,7 +79,7 @@ bool EventLoop::update_fd(int fd, uint32_t events)
 
 bool EventLoop::remove_fd(int fd)
 {
-    if (!valid())
+    if (!valid() || fd < 0)
     {
         return false;
     }
