@@ -8,7 +8,8 @@ SRC = main/server.cpp \
       src/http.cpp \
       src/router.cpp \
 	  src/connection.cpp \
-	  src/buffer.cpp
+	  src/buffer.cpp \
+	  src/event_loop.cpp
 all: $(TARGET)
 $(TARGET): $(SRC)
 	mkdir -p build
