@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -Iinclude
+CXXFLAGS = -std=c++17 -Wall -Wextra -Werror -Iinclude
 LDFLAGS = -pthread
 TARGET = build/server
 SRC = main/server.cpp \
@@ -9,7 +9,11 @@ SRC = main/server.cpp \
       src/router.cpp \
 	  src/connection.cpp \
 	  src/buffer.cpp \
-	  src/event_loop.cpp
+	  src/event_loop.cpp \
+	  src/tcp_server.cpp \
+	   src/event_loop_thread.cpp \
+      src/event_loop_thread_pool.cpp \
+
 all: $(TARGET)
 $(TARGET): $(SRC)
 	mkdir -p build

@@ -18,7 +18,6 @@ private:
     mutex mtx;                              // mutex，互斥锁，保护任务队列和 stop
     condition_variable cv;                  // condition variable，条件变量，负责阻塞和唤醒线程
     bool stop;                              // 标记线程池是否准备停止
-private:
     void worker_loop();                     // 每个工作线程都会执行这个循环函数
 public:
     explicit ThreadPool(int thread_count);  // 构造函数：创建固定数量的工作线程
