@@ -3,12 +3,33 @@
 #include "event_loop.h"
 #include "logger.h"
 #include "tcp_server.h"
+#include <utility>
+#include "codec.h"
 
 using namespace std;
 #define endl '\n'
 
 const int PORT = 8080;
 const int THREAD_COUNT = 4;
+
+void handle_frame(const Connection::ConnectionPtr &connection, std::uint16_t type, const std::string &payload)
+{
+    std::string frame;
+    if (!Codec::encode(type, payload, frame))
+    {
+        return;
+    }
+    connection->send(std::move(frame));
+}
+
+bool handle_message(const Connection::ConnectionPtr &connection, Buffer &buffer)
+{
+    Codec::FrameCallback frame_callback = [connection](std::uint16_t type, const std::string &payload)
+    {
+        handle_frame(connection, type, payload);
+    };
+    return Codec::decode(buffer, frame_callback);
+}
 
 int main()
 {
@@ -29,6 +50,7 @@ int main()
         return 1;
     }
     TcpServer server(&base_loop, PORT, THREAD_COUNT);
+    server.set_message_callback(handle_message);
     if (!server.start())
     {
         Logger::get_instance().write_log("ERROR", "TcpServer 启动失败");

@@ -74,7 +74,7 @@ void TcpServer::close_listen_socket()
 
 bool TcpServer::start()
 {
-    if (!base_loop_ || !base_loop_->valid() || !base_loop_->is_in_loop_thread() || started_ || listen_fd_ != -1 || listen_registered_)
+    if (!base_loop_ || !base_loop_->valid() || !base_loop_->is_in_loop_thread() || started_ || listen_fd_ != -1 || listen_registered_ || !message_callback_)
     {
         return false;
     }
@@ -164,6 +164,7 @@ void TcpServer::handle_accept(uint32_t events)
         {
             remove_connection(connection);
         });
+        connection->set_message_callback(message_callback_);
         connections_[client_fd] = connection;
         io_loop->run_in_loop([connection]()
         {
@@ -213,6 +214,15 @@ void TcpServer::remove_connection_in_loop(const Connection::ConnectionPtr &conne
     {
         connection->connect_destroyed();
     });
+}
+
+void TcpServer::set_message_callback(Connection::MessageCallback callback)
+{
+    if (started_)
+    {
+        return;
+    }
+    message_callback_ = std::move(callback);
 }
 
 TcpServer::~TcpServer()

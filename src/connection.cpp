@@ -106,12 +106,25 @@ void Connection::handle_event(uint32_t events)
     {
         return;
     }
-    bool connection_success = true;
     if ((events & (EPOLLIN | EPOLLRDHUP)) != 0)
     {
-        connection_success = read_from_socket();
+        if (!read_from_socket())
+        {
+            handle_close();
+            return;
+        }
+        if (!message_callback_ || !message_callback_(shared_from_this(), read_buffer_))
+        {
+            handle_close();
+            return;
+        }
+        if (state_ != State::Connected)
+        {
+            return;
+        }
     }
-    if (connection_success && (events & EPOLLOUT))
+    bool connection_success = true;
+    if ((events & EPOLLOUT) != 0)
     {
         connection_success = write_to_socket();
     }

@@ -16,6 +16,7 @@ public:
     ~TcpServer();
     TcpServer(const TcpServer &) = delete;
     TcpServer &operator=(const TcpServer &) = delete;
+    void set_message_callback(Connection::MessageCallback callback);
     bool start();
     bool started() const;
 private:
@@ -28,6 +29,7 @@ private:
     int listen_fd_;
     bool listen_registered_;
     bool started_;
+    Connection::MessageCallback message_callback_;
     std::unordered_map<int, std::shared_ptr<Connection>>connections_;
     void remove_connection(const Connection::ConnectionPtr &connection);
     void remove_connection_in_loop(const Connection::ConnectionPtr &connection);

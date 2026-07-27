@@ -20,6 +20,15 @@
 namespace
 {
 
+    void set_discard_message_callback(TcpServer &server)
+    {
+        server.set_message_callback([](const Connection::ConnectionPtr &, Buffer &buffer)
+        {
+            buffer.retrieve_all();
+            return true;
+        });
+    }
+
     std::uint16_t find_free_port()
     {
         int fd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -187,6 +196,7 @@ namespace
         {
             EventLoop base_loop;
             TcpServer server(&base_loop, port_, thread_count_);
+            set_discard_message_callback(server);
             bool first_start = server.start();
             bool second_start = first_start ? server.start() : false;
 
@@ -224,6 +234,7 @@ namespace
     bool null_base_rejected()
     {
         TcpServer server(nullptr, find_free_port(), 1);
+        set_discard_message_callback(server);
         return !server.start() && !server.started();
     }
 
@@ -231,6 +242,7 @@ namespace
     {
         EventLoop base_loop;
         TcpServer server(&base_loop, find_free_port(), 1);
+        set_discard_message_callback(server);
         bool result = true;
         std::thread thread([&server, &result]()
         {
@@ -238,6 +250,13 @@ namespace
         });
         thread.join();
         return !result && !server.started();
+    }
+
+    bool missing_message_callback_rejected()
+    {
+        EventLoop base_loop;
+        TcpServer server(&base_loop, find_free_port(), 1);
+        return !server.start() && !server.started();
     }
 
     bool accept_and_close(std::size_t thread_count, std::size_t client_count)
@@ -359,6 +378,7 @@ int main()
     {
         {"null_base_rejected", null_base_rejected},
         {"wrong_thread_rejected", wrong_thread_rejected},
+        {"missing_message_callback_rejected", missing_message_callback_rejected},
         {"zero_worker_accept_and_close", zero_worker_accept_and_close},
         {"one_worker_accept_and_close", one_worker_accept_and_close},
         {"three_worker_multiple_connections", three_worker_multiple_connections},

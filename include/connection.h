@@ -15,7 +15,7 @@ class Connection : public std::enable_shared_from_this<Connection>
 public:
     using ConnectionPtr = std::shared_ptr<Connection>;
     using CloseCallback = std::function<void(const ConnectionPtr &)>;
-    using MessageCallback = std::function<void(const ConnectionPtr &, Buffer &)>;
+    using MessageCallback = std::function<bool(const ConnectionPtr &, Buffer &)>;
     Connection(EventLoop *loop, int fd);
     void set_close_callback(CloseCallback callback);
     void connect_established();
