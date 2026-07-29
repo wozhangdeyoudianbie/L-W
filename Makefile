@@ -11,7 +11,8 @@ SRC = main/server.cpp \
       src/event_loop_thread.cpp \
       src/event_loop_thread_pool.cpp \
       src/connection.cpp \
-      src/tcp_server.cpp
+      src/tcp_server.cpp \
+	  src/protocol.cpp \
 
 BUFFER_TEST_TARGET = build/buffer_test
 BUFFER_TEST_SRC = tests/buffer_test.cpp \
@@ -58,6 +59,10 @@ MESSAGE_CALLBACK_TEST_SRC = tests/message_callback_test.cpp \
                             src/connection.cpp \
                             src/tcp_server.cpp
 
+PROTOCOL_TEST_TARGET = build/protocol_test
+PROTOCOL_TEST_SRC = tests/protocol_test.cpp \
+                    src/protocol.cpp
+
 SLOW_ECHO_CLIENT_TARGET = build/slow_echo_client
 SLOW_ECHO_CLIENT_SRC = tests/slow_echo_client.cpp
 
@@ -99,6 +104,10 @@ $(SLOW_ECHO_CLIENT_TARGET): $(SLOW_ECHO_CLIENT_SRC)
 	mkdir -p build
 	$(CXX) $(SLOW_ECHO_CLIENT_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(SLOW_ECHO_CLIENT_TARGET)
 
+$(PROTOCOL_TEST_TARGET): $(PROTOCOL_TEST_SRC)
+	mkdir -p build
+	$(CXX) $(PROTOCOL_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(PROTOCOL_TEST_TARGET)
+
 run: all
 	./$(TARGET)
 
@@ -123,13 +132,22 @@ test-codec: $(CODEC_TEST_TARGET)
 test-message-callback: $(MESSAGE_CALLBACK_TEST_TARGET)
 	./$(MESSAGE_CALLBACK_TEST_TARGET)
 
+test-protocol: $(PROTOCOL_TEST_TARGET)
+	./$(PROTOCOL_TEST_TARGET)
+
+test-protocol-encode:
+	mkdir -p build
+	g++ tests/protocol_encode_test.cpp src/protocol.cpp -std=c++17 -Wall -Wextra -Werror -Iinclude -pthread -o build/protocol_encode_test
+	./build/protocol_encode_test
+
 test-all: test-buffer \
           test-event-loop \
           test-event-loop-thread \
           test-event-loop-thread-pool \
           test-tcp-server \
           test-codec \
-          test-message-callback
+          test-message-callback \
+          test-protocol
 
 slow-echo-client: $(SLOW_ECHO_CLIENT_TARGET)
 
@@ -148,3 +166,4 @@ clean:
         test-all \
         slow-echo-client \
         clean
+		test-protocol \
