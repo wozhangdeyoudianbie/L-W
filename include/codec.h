@@ -6,16 +6,11 @@
 #include <cstdint>
 #include <functional>
 #include <string>
-#include <arpa/inet.h>
-#include <cstring>
-#include <iomanip>
-#include <iostream>
-#include <string>
 
 class Codec
 {
 public:
-    using FrameCallback = std::function<void(std::uint16_t, const std::string &)>;
+    using FrameCallback = std::function<bool(std::uint16_t, const std::string &)>;
     static bool encode(std::uint16_t type, const std::string &payload, std::string &frame);
     static bool decode(Buffer &buffer, const FrameCallback &callback);
 private:

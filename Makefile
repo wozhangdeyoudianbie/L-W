@@ -12,8 +12,10 @@ SRC = main/server.cpp \
       src/event_loop_thread_pool.cpp \
       src/connection.cpp \
       src/tcp_server.cpp \
-	  src/protocol.cpp \
-
+      src/protocol.cpp \
+      src/room.cpp \
+      src/room_manager.cpp \
+	  src/room_service.cpp
 BUFFER_TEST_TARGET = build/buffer_test
 BUFFER_TEST_SRC = tests/buffer_test.cpp \
                   src/buffer.cpp
@@ -63,8 +65,53 @@ PROTOCOL_TEST_TARGET = build/protocol_test
 PROTOCOL_TEST_SRC = tests/protocol_test.cpp \
                     src/protocol.cpp
 
+PROTOCOL_ENCODE_TEST_TARGET = build/protocol_encode_test
+PROTOCOL_ENCODE_TEST_SRC = tests/protocol_encode_test.cpp \
+                           src/protocol.cpp
+
+ROOM_TEST_TARGET = build/room_test
+ROOM_TEST_SRC = tests/room_test.cpp \
+                src/logger.cpp \
+                src/buffer.cpp \
+                src/event_loop.cpp \
+                src/connection.cpp \
+                src/protocol.cpp \
+                src/room.cpp
+
+ROOM_MANAGER_TEST_TARGET = build/room_manager_test
+ROOM_MANAGER_TEST_SRC = tests/room_manager_test.cpp \
+                        src/logger.cpp \
+                        src/buffer.cpp \
+                        src/event_loop.cpp \
+                        src/connection.cpp \
+                        src/protocol.cpp \
+                        src/room.cpp \
+                        src/room_manager.cpp
+
+ROOM_SERVICE_TEST_TARGET = build/room_service_test
+ROOM_SERVICE_TEST_SRC = tests/room_service_test.cpp \
+                        src/logger.cpp \
+                        src/buffer.cpp \
+                        src/codec.cpp \
+                        src/event_loop.cpp \
+                        src/connection.cpp \
+                        src/protocol.cpp \
+                        src/room.cpp \
+                        src/room_manager.cpp \
+                        src/room_service.cpp
+
 SLOW_ECHO_CLIENT_TARGET = build/slow_echo_client
 SLOW_ECHO_CLIENT_SRC = tests/slow_echo_client.cpp
+
+TCP_SERVER_CLOSED_CALLBACK_TEST_TARGET = build/tcp_server_closed_callback_test
+TCP_SERVER_CLOSED_CALLBACK_TEST_SRC = tests/tcp_server_closed_callback_test.cpp \
+                                      src/logger.cpp \
+                                      src/buffer.cpp \
+                                      src/event_loop.cpp \
+                                      src/event_loop_thread.cpp \
+                                      src/event_loop_thread_pool.cpp \
+                                      src/connection.cpp \
+                                      src/tcp_server.cpp
 
 all: $(TARGET)
 
@@ -100,13 +147,33 @@ $(MESSAGE_CALLBACK_TEST_TARGET): $(MESSAGE_CALLBACK_TEST_SRC)
 	mkdir -p build
 	$(CXX) $(MESSAGE_CALLBACK_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(MESSAGE_CALLBACK_TEST_TARGET)
 
+$(PROTOCOL_TEST_TARGET): $(PROTOCOL_TEST_SRC)
+	mkdir -p build
+	$(CXX) $(PROTOCOL_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(PROTOCOL_TEST_TARGET)
+
+$(PROTOCOL_ENCODE_TEST_TARGET): $(PROTOCOL_ENCODE_TEST_SRC)
+	mkdir -p build
+	$(CXX) $(PROTOCOL_ENCODE_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(PROTOCOL_ENCODE_TEST_TARGET)
+
+$(ROOM_TEST_TARGET): $(ROOM_TEST_SRC)
+	mkdir -p build
+	$(CXX) $(ROOM_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(ROOM_TEST_TARGET)
+
+$(ROOM_MANAGER_TEST_TARGET): $(ROOM_MANAGER_TEST_SRC)
+	mkdir -p build
+	$(CXX) $(ROOM_MANAGER_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(ROOM_MANAGER_TEST_TARGET)
+
 $(SLOW_ECHO_CLIENT_TARGET): $(SLOW_ECHO_CLIENT_SRC)
 	mkdir -p build
 	$(CXX) $(SLOW_ECHO_CLIENT_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(SLOW_ECHO_CLIENT_TARGET)
 
-$(PROTOCOL_TEST_TARGET): $(PROTOCOL_TEST_SRC)
+$(TCP_SERVER_CLOSED_CALLBACK_TEST_TARGET): $(TCP_SERVER_CLOSED_CALLBACK_TEST_SRC)
 	mkdir -p build
-	$(CXX) $(PROTOCOL_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(PROTOCOL_TEST_TARGET)
+	$(CXX) $(TCP_SERVER_CLOSED_CALLBACK_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(TCP_SERVER_CLOSED_CALLBACK_TEST_TARGET)
+
+$(ROOM_SERVICE_TEST_TARGET): $(ROOM_SERVICE_TEST_SRC)
+	mkdir -p build
+	$(CXX) $(ROOM_SERVICE_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(ROOM_SERVICE_TEST_TARGET)
 
 run: all
 	./$(TARGET)
@@ -135,10 +202,20 @@ test-message-callback: $(MESSAGE_CALLBACK_TEST_TARGET)
 test-protocol: $(PROTOCOL_TEST_TARGET)
 	./$(PROTOCOL_TEST_TARGET)
 
-test-protocol-encode:
-	mkdir -p build
-	g++ tests/protocol_encode_test.cpp src/protocol.cpp -std=c++17 -Wall -Wextra -Werror -Iinclude -pthread -o build/protocol_encode_test
-	./build/protocol_encode_test
+test-protocol-encode: $(PROTOCOL_ENCODE_TEST_TARGET)
+	./$(PROTOCOL_ENCODE_TEST_TARGET)
+
+test-room: $(ROOM_TEST_TARGET)
+	./$(ROOM_TEST_TARGET)
+
+test-room-manager: $(ROOM_MANAGER_TEST_TARGET)
+	./$(ROOM_MANAGER_TEST_TARGET)
+
+test-tcp-server-closed-callback: $(TCP_SERVER_CLOSED_CALLBACK_TEST_TARGET)
+	./$(TCP_SERVER_CLOSED_CALLBACK_TEST_TARGET)
+
+test-room-service: $(ROOM_SERVICE_TEST_TARGET)
+	./$(ROOM_SERVICE_TEST_TARGET)
 
 test-all: test-buffer \
           test-event-loop \
@@ -147,8 +224,12 @@ test-all: test-buffer \
           test-tcp-server \
           test-codec \
           test-message-callback \
-          test-protocol
-
+          test-protocol \
+          test-protocol-encode \
+          test-room \
+          test-room-manager \
+		  test-tcp-server-closed-callback \
+		  test-room-service
 slow-echo-client: $(SLOW_ECHO_CLIENT_TARGET)
 
 clean:
@@ -163,7 +244,12 @@ clean:
         test-tcp-server \
         test-codec \
         test-message-callback \
+        test-protocol \
+        test-protocol-encode \
+        test-room \
+        test-room-manager \
         test-all \
         slow-echo-client \
-        clean
-		test-protocol \
+        clean \
+		test-tcp-server-closed-callback \
+		test-room-service

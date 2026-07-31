@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <utility>
 #include <cerrno>
+#include <exception>
+#include "logger.h"
 
 TcpServer::TcpServer(EventLoop *base_loop, std::uint16_t port, std::size_t thread_count)
     :base_loop_(base_loop), port_(port), thread_pool_(base_loop, thread_count),
@@ -209,6 +211,26 @@ void TcpServer::remove_connection_in_loop(const Connection::ConnectionPtr &conne
     {
         return;
     }
+    if (connection_closed_callback_)
+    {
+        try
+        {
+            connection_closed_callback_(connection);
+        }
+        catch (const std::exception &exception)
+        {
+            Logger::get_instance().write_log(
+                "ERROR",
+                "连接关闭业务回调异常，fd = " + std::to_string(connection->fd()) +
+                "，原因 = " + exception.what());
+        }
+        catch (...)
+        {
+            Logger::get_instance().write_log(
+                "ERROR",
+                "连接关闭业务回调发生未知异常，fd = " + std::to_string(connection->fd()));
+        }
+    }
     connections_.erase(it);
     io_loop->queue_in_loop([connection]()
     {
@@ -223,6 +245,15 @@ void TcpServer::set_message_callback(Connection::MessageCallback callback)
         return;
     }
     message_callback_ = std::move(callback);
+}
+
+void TcpServer::set_connection_closed_callback(TcpServer::ConnectionClosedCallback callback)
+{
+    if (started_)
+    {
+        return;
+    }
+    connection_closed_callback_ = std::move(callback);
 }
 
 TcpServer::~TcpServer()

@@ -6,23 +6,28 @@
 #include "event_loop_thread_pool.h"
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <unordered_map>
 
 class TcpServer
 {
 public:
+    using ConnectionClosedCallback = std::function<void(const Connection::ConnectionPtr &)>;
     TcpServer(EventLoop *base_loop, std::uint16_t port, std::size_t thread_count);
     ~TcpServer();
     TcpServer(const TcpServer &) = delete;
     TcpServer &operator=(const TcpServer &) = delete;
     void set_message_callback(Connection::MessageCallback callback);
+    void set_connection_closed_callback(ConnectionClosedCallback callback);
     bool start();
     bool started() const;
 private:
     bool create_listen_socket();
     void close_listen_socket();
     void handle_accept(uint32_t events);
+    void remove_connection(const Connection::ConnectionPtr &connection);
+    void remove_connection_in_loop(const Connection::ConnectionPtr &connection);
     EventLoop *base_loop_;
     std::uint16_t port_;
     EventLoopThreadPool thread_pool_;
@@ -30,9 +35,8 @@ private:
     bool listen_registered_;
     bool started_;
     Connection::MessageCallback message_callback_;
-    std::unordered_map<int, std::shared_ptr<Connection>>connections_;
-    void remove_connection(const Connection::ConnectionPtr &connection);
-    void remove_connection_in_loop(const Connection::ConnectionPtr &connection);
+    ConnectionClosedCallback connection_closed_callback_;
+    std::unordered_map<int, std::shared_ptr<Connection>> connections_;
 };
 
 #endif

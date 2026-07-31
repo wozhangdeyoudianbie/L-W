@@ -47,7 +47,10 @@ bool Codec::decode(Buffer &buffer, const FrameCallback &callback)
         net_type = ntohs(net_type);
         std::string net_payload(buffer.peek() + LENGTH_FIELD_SIZE + TYPE_FIELD_SIZE, frame_len - TYPE_FIELD_SIZE);
         buffer.retrieve(frame_len + LENGTH_FIELD_SIZE);
-        callback(net_type, net_payload);
+        if (!callback(net_type, net_payload))
+        {
+            return false;
+        }
     }
     return true;
 }
