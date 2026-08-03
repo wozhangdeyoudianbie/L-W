@@ -20,6 +20,21 @@ std::size_t Room::member_count() const
     return members_.size();
 }
 
+Roomstatemachine::States Room::state() const
+{
+    return state_machine_.state();
+}
+
+Roomstatemachine::Transitionstates Room::start(bool ready_to_start)
+{
+    return state_machine_.start(ready_to_start);
+}
+
+Roomstatemachine::Transitionstates Room::finish(bool should_finish)
+{
+    return state_machine_.finish(should_finish);
+}
+
 bool Room::contains(std::uint64_t player_id) const
 {
     if (members_.find(player_id) == members_.end())
@@ -42,6 +57,13 @@ Room::JoinResult Room::join(const Connection::ConnectionPtr &connection, const s
     if (player_name.empty() || player_name.size() > Protocol::MAX_PLAYER_NAME_SIZE)
     {
         temp_.status = JoinStatus::invalid_player_name;
+        temp_.player_id = 0;
+        temp_.members = {};
+        return temp_;
+    }
+    if (!state_machine_.can_join())
+    {
+        temp_.status = JoinStatus::invalid_state;
         temp_.player_id = 0;
         temp_.members = {};
         return temp_;

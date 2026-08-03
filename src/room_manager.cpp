@@ -90,6 +90,11 @@ RoomManager::JoinResult RoomManager::join(const Connection::ConnectionPtr &conne
                 temp_.status = Status::room_full;
                 return temp_;
             }
+        case Room::JoinStatus::invalid_state:
+            {
+                temp_.status = Status::room_not_joinable;
+                return temp_;
+            }
         case Room::JoinStatus::invalid_player_name:
             {
                 temp_.status = Status::invalid_player_name;

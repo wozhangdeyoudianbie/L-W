@@ -35,6 +35,7 @@ namespace
         return [&frames](std::uint16_t type, const std::string &payload)
         {
             frames.push_back({type, payload});
+            return true;
         };
     }
 
@@ -63,6 +64,7 @@ namespace
         {
             consumed_before_callback = buffer.empty();
             frames.push_back({type, payload});
+            return true;
         };
 
         CHECK(Codec::decode(buffer, callback));
@@ -290,6 +292,40 @@ namespace
         return true;
     }
 
+    bool test_callback_stops_decode()
+    {
+        std::string first;
+        std::string second;
+        CHECK(Codec::encode(1, "first", first));
+        CHECK(Codec::encode(2, "second", second));
+
+        Buffer buffer;
+        buffer.append(first);
+        buffer.append(second);
+
+        std::vector<ReceivedFrame> frames;
+        Codec::FrameCallback stop_after_first = [&frames](std::uint16_t type, const std::string &payload)
+        {
+            frames.push_back({type, payload});
+            return false;
+        };
+
+        CHECK(!Codec::decode(buffer, stop_after_first));
+        CHECK(frames.size() == 1);
+        CHECK(frames[0].type == 1);
+        CHECK(frames[0].payload == "first");
+        CHECK(buffer.readable_bytes() == second.size());
+
+        Codec::FrameCallback collect_remaining = collect_frames(frames);
+        CHECK(Codec::decode(buffer, collect_remaining));
+        CHECK(buffer.empty());
+        CHECK(frames.size() == 2);
+        CHECK(frames[1].type == 2);
+        CHECK(frames[1].payload == "second");
+
+        return true;
+    }
+
     bool test_repeated_encode_decode()
     {
         constexpr int repeat_count = 100;
@@ -333,6 +369,7 @@ int main()
         {"invalid_lengths_and_empty_callback", test_invalid_lengths_and_empty_callback},
         {"encode_boundaries", test_encode_boundaries},
         {"empty_buffer", test_empty_buffer},
+        {"callback_stops_decode", test_callback_stops_decode},
         {"repeated_encode_decode", test_repeated_encode_decode}
     };
 

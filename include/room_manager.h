@@ -18,6 +18,7 @@ public:
         invalid_connection,
         room_not_found,
         room_full,
+        room_not_joinable,
         already_in_room,
         not_in_room,
         invalid_player_name,

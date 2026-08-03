@@ -27,7 +27,8 @@ enum class ErrorCode : std::uint16_t
     not_in_room = 4,
     invalid_player_name = 5,
     invalid_message = 6,
-    player_id_exhausted = 7
+    player_id_exhausted = 7,
+    room_not_joinable = 8
 };
 
 struct JoinRequest

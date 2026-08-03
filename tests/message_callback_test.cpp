@@ -39,6 +39,7 @@ namespace
         Codec::FrameCallback frame_callback = [connection](std::uint16_t type, const std::string &payload)
         {
             handle_frame(connection, type, payload);
+            return true;
         };
         return Codec::decode(buffer, frame_callback);
     }

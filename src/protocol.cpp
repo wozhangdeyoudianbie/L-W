@@ -195,6 +195,7 @@ bool Protocol::encode_error(MessageType request_type, ErrorCode error_code, std:
         case ErrorCode::invalid_player_name:
         case ErrorCode::invalid_message:
         case ErrorCode::player_id_exhausted:
+        case ErrorCode::room_not_joinable:
             break;
         default:
             return false;

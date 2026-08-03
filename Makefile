@@ -15,7 +15,18 @@ SRC = main/server.cpp \
       src/protocol.cpp \
       src/room.cpp \
       src/room_manager.cpp \
-	  src/room_service.cpp
+	  src/room_service.cpp \
+	  src/room_state_machine.cpp \
+  	  src/game_state.cpp \
+
+ROOM_STATE_MACHINE_TEST_TARGET = build/room_state_machine_test
+ROOM_STATE_MACHINE_TEST_SRC = tests/room_state_machine_test.cpp \
+                              src/room_state_machine.cpp
+
+GAME_STATE_TEST_TARGET = build/game_state_test
+GAME_STATE_TEST_SRC = tests/game_state_test.cpp \
+                      src/game_state.cpp
+
 BUFFER_TEST_TARGET = build/buffer_test
 BUFFER_TEST_SRC = tests/buffer_test.cpp \
                   src/buffer.cpp
@@ -76,6 +87,7 @@ ROOM_TEST_SRC = tests/room_test.cpp \
                 src/event_loop.cpp \
                 src/connection.cpp \
                 src/protocol.cpp \
+                src/room_state_machine.cpp \
                 src/room.cpp
 
 ROOM_MANAGER_TEST_TARGET = build/room_manager_test
@@ -85,6 +97,7 @@ ROOM_MANAGER_TEST_SRC = tests/room_manager_test.cpp \
                         src/event_loop.cpp \
                         src/connection.cpp \
                         src/protocol.cpp \
+                        src/room_state_machine.cpp \
                         src/room.cpp \
                         src/room_manager.cpp
 
@@ -96,6 +109,7 @@ ROOM_SERVICE_TEST_SRC = tests/room_service_test.cpp \
                         src/event_loop.cpp \
                         src/connection.cpp \
                         src/protocol.cpp \
+                        src/room_state_machine.cpp \
                         src/room.cpp \
                         src/room_manager.cpp \
                         src/room_service.cpp
@@ -175,6 +189,14 @@ $(ROOM_SERVICE_TEST_TARGET): $(ROOM_SERVICE_TEST_SRC)
 	mkdir -p build
 	$(CXX) $(ROOM_SERVICE_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(ROOM_SERVICE_TEST_TARGET)
 
+$(ROOM_STATE_MACHINE_TEST_TARGET): $(ROOM_STATE_MACHINE_TEST_SRC)
+	mkdir -p build
+	$(CXX) $(ROOM_STATE_MACHINE_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(ROOM_STATE_MACHINE_TEST_TARGET)
+
+$(GAME_STATE_TEST_TARGET): $(GAME_STATE_TEST_SRC)
+	mkdir -p build
+	$(CXX) $(GAME_STATE_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(GAME_STATE_TEST_TARGET)
+
 run: all
 	./$(TARGET)
 
@@ -216,6 +238,11 @@ test-tcp-server-closed-callback: $(TCP_SERVER_CLOSED_CALLBACK_TEST_TARGET)
 
 test-room-service: $(ROOM_SERVICE_TEST_TARGET)
 	./$(ROOM_SERVICE_TEST_TARGET)
+test-room-state-machine: $(ROOM_STATE_MACHINE_TEST_TARGET)
+	./$(ROOM_STATE_MACHINE_TEST_TARGET)
+
+test-game-state: $(GAME_STATE_TEST_TARGET)
+	./$(GAME_STATE_TEST_TARGET)
 
 test-all: test-buffer \
           test-event-loop \
@@ -229,7 +256,10 @@ test-all: test-buffer \
           test-room \
           test-room-manager \
 		  test-tcp-server-closed-callback \
-		  test-room-service
+		  test-room-service \
+          test-room-state-machine \
+          test-game-state
+
 slow-echo-client: $(SLOW_ECHO_CLIENT_TARGET)
 
 clean:
@@ -252,4 +282,6 @@ clean:
         slow-echo-client \
         clean \
 		test-tcp-server-closed-callback \
-		test-room-service
+		test-room-service \
+		test-room-state-machine \
+		test-game-state \

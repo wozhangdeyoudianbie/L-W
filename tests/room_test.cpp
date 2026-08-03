@@ -198,6 +198,91 @@ namespace
 
         return true;
     }
+
+    bool test_state_machine_constraints()
+    {
+        Room room(400, 2);
+        auto connection_a = make_connection();
+        auto connection_b = make_connection();
+
+        if (!expect(room.state() == Roomstatemachine::States::waiting, "room initially waiting"))
+        {
+            return false;
+        }
+
+        Room::JoinResult result_a = room.join(connection_a, "alice");
+        if (!expect(result_a.status == Room::JoinStatus::success, "join before start"))
+        {
+            return false;
+        }
+
+        if (!expect(room.start(false) == Roomstatemachine::Transitionstates::condition_not_met, "start condition not met"))
+        {
+            return false;
+        }
+        if (!expect(room.state() == Roomstatemachine::States::waiting, "failed start keeps waiting"))
+        {
+            return false;
+        }
+
+        if (!expect(room.start(true) == Roomstatemachine::Transitionstates::success, "room start"))
+        {
+            return false;
+        }
+        if (!expect(room.state() == Roomstatemachine::States::running, "room enters running"))
+        {
+            return false;
+        }
+
+        Room::JoinResult blocked_running = room.join(connection_b, "bob");
+        if (!expect(blocked_running.status == Room::JoinStatus::invalid_state, "running room rejects join"))
+        {
+            return false;
+        }
+        if (!expect(blocked_running.player_id == 0 && blocked_running.members.empty(), "running rejection result"))
+        {
+            return false;
+        }
+        if (!expect(room.member_count() == 1 && !room.contains(2), "running rejection preserves members"))
+        {
+            return false;
+        }
+
+        if (!expect(room.leave(result_a.player_id), "leave remains allowed while running"))
+        {
+            return false;
+        }
+        if (!expect(room.member_count() == 0, "running leave cleans membership"))
+        {
+            return false;
+        }
+
+        if (!expect(room.finish(false) == Roomstatemachine::Transitionstates::condition_not_met, "finish condition not met"))
+        {
+            return false;
+        }
+        if (!expect(room.state() == Roomstatemachine::States::running, "failed finish keeps running"))
+        {
+            return false;
+        }
+
+        if (!expect(room.finish(true) == Roomstatemachine::Transitionstates::success, "room finish"))
+        {
+            return false;
+        }
+
+        Room::JoinResult blocked_finished = room.join(connection_b, "bob");
+        if (!expect(blocked_finished.status == Room::JoinStatus::invalid_state, "finished room rejects join"))
+        {
+            return false;
+        }
+        if (!expect(room.state() == Roomstatemachine::States::finished && room.member_count() == 0, "finished rejection preserves room"))
+        {
+            return false;
+        }
+
+        return true;
+    }
 }
 
 int main()
@@ -211,7 +296,8 @@ int main()
     const TestCase tests[] = {
         {"normal_join_and_snapshot", test_normal_join_and_snapshot},
         {"failures_leave_and_id_progress", test_failures_leave_and_id_progress},
-        {"binary_name_and_expired_connection", test_binary_name_and_expired_connection}
+        {"binary_name_and_expired_connection", test_binary_name_and_expired_connection},
+        {"state_machine_constraints", test_state_machine_constraints}
     };
 
     for (const TestCase &test : tests)

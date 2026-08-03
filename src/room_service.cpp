@@ -19,6 +19,11 @@ namespace
                     error_code = ErrorCode::room_full;
                     return true;
                 }
+            case RoomManager::Status::room_not_joinable:
+                {
+                    error_code = ErrorCode::room_not_joinable;
+                    return true;
+                }
             case RoomManager::Status::already_in_room:
                 {
                     error_code = ErrorCode::already_in_room;
