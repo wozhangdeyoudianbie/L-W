@@ -13,7 +13,7 @@ public:
     ~EventLoopThread();
     EventLoopThread(const EventLoopThread &) = delete;
     EventLoopThread &operator=(const EventLoopThread &) = delete;
-    EventLoop *start_loop();
+    EventLoop *start_loop();   // 启动线程并返回其中的 EventLoop（失败返回 nullptr）
 private:
     void thread_func();
     std::thread thread_;

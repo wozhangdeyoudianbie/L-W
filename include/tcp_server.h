@@ -18,9 +18,9 @@ public:
     ~TcpServer();
     TcpServer(const TcpServer &) = delete;
     TcpServer &operator=(const TcpServer &) = delete;
-    void set_message_callback(Connection::MessageCallback callback);
-    void set_connection_closed_callback(ConnectionClosedCallback callback);
-    bool start();
+    void set_message_callback(Connection::MessageCallback callback);            // 设置消息处理回调
+    void set_connection_closed_callback(ConnectionClosedCallback callback);      // 设置连接关闭回调
+    bool start();       // 监听端口并启动线程池
     bool started() const;
 private:
     bool create_listen_socket();

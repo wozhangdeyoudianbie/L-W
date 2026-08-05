@@ -88,6 +88,7 @@ ROOM_TEST_SRC = tests/room_test.cpp \
                 src/connection.cpp \
                 src/protocol.cpp \
                 src/room_state_machine.cpp \
+                src/game_state.cpp \
                 src/room.cpp
 
 ROOM_MANAGER_TEST_TARGET = build/room_manager_test
@@ -98,6 +99,7 @@ ROOM_MANAGER_TEST_SRC = tests/room_manager_test.cpp \
                         src/connection.cpp \
                         src/protocol.cpp \
                         src/room_state_machine.cpp \
+                        src/game_state.cpp \
                         src/room.cpp \
                         src/room_manager.cpp
 
@@ -110,6 +112,7 @@ ROOM_SERVICE_TEST_SRC = tests/room_service_test.cpp \
                         src/connection.cpp \
                         src/protocol.cpp \
                         src/room_state_machine.cpp \
+                        src/game_state.cpp \
                         src/room.cpp \
                         src/room_manager.cpp \
                         src/room_service.cpp

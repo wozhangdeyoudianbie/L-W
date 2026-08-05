@@ -12,7 +12,7 @@
 class RoomManager
 {
 public:
-    enum class Status
+    enum class States
     {
         success,
         invalid_connection,
@@ -24,11 +24,13 @@ public:
         invalid_player_name,
         invalid_message,
         player_id_exhausted,
+        room_not_running,
+        already_submitted,
         internal_error
     };
     struct JoinResult
     {
-        Status status = Status::internal_error;
+        States state = States::internal_error;
         std::uint32_t room_id = 0;
         std::uint64_t player_id = 0;
         std::vector<MemberInfo> members;
@@ -36,16 +38,31 @@ public:
     };
     struct LeaveResult
     {
-        Status status = Status::internal_error;
+        States state = States::internal_error;
         std::uint32_t room_id = 0;
         std::uint64_t player_id = 0;
         std::vector<Connection::ConnectionPtr> notify_connections;
     };
     struct ChatResult
     {
-        Status status = Status::internal_error;
+        States state = States::internal_error;
         std::uint32_t room_id = 0;
         std::uint64_t player_id = 0;
+        std::vector<Connection::ConnectionPtr> notify_connections;
+    };
+    struct CommandResult
+    {
+        States state = States::internal_error;
+        std::uint32_t room_id = 0;
+        std::uint64_t player_id = 0;
+    };
+    struct TickResult
+    {
+        std::uint32_t room_id = 0;
+        std::uint64_t tick_id = 0;
+        std::size_t processed_commands = 0;
+        std::size_t successful_commands = 0;
+        std::vector<PlayerGameState> snapshot;
         std::vector<Connection::ConnectionPtr> notify_connections;
     };
     bool add_room(std::uint32_t room_id, std::size_t capacity);
@@ -55,6 +72,9 @@ public:
     JoinResult join(const Connection::ConnectionPtr &connection, std::uint32_t room_id, const std::string &player_name);
     LeaveResult leave(const Connection::ConnectionPtr &connection);
     ChatResult chat(const Connection::ConnectionPtr &connection, const std::string &message) const;
+    CommandResult move(const Connection::ConnectionPtr &connection, std::int32_t dx, std::int32_t dy);
+    CommandResult attack(const Connection::ConnectionPtr &connection, std::uint64_t target_player_id);
+    std::vector<TickResult> tick_rooms();
     LeaveResult disconnect(const Connection::ConnectionPtr &connection);
 private:
     struct Membership

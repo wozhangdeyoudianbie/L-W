@@ -137,44 +137,44 @@ Gamestate::Attackresult Gamestate::attack_player(std::uint64_t attacker_id, std:
     result.target_player_id = target_player_id;
     if (attacker_id == 0 || target_player_id == 0)
     {
-        result.status = States::invalid_player_id;
+        result.state = States::invalid_player_id;
         return result;
     }
     if (attacker_id == target_player_id)
     {
-        result.status = States::invalid_target;
+        result.state = States::invalid_target;
         return result;
     }
     auto attacker_it = players_.find(attacker_id);
     if (attacker_it == players_.end())
     {
-        result.status = States::attacker_not_found;
+        result.state = States::attacker_not_found;
         return result;
     }
     auto target_it = players_.find(target_player_id);
     if (target_it == players_.end())
     {
-        result.status = States::target_not_found;
+        result.state = States::target_not_found;
         return result;
     }
     if (attacker_it->second.hp <= 0)
     {
-        result.status = States::attacker_dead;
+        result.state = States::attacker_dead;
         return result;
     }
     if (target_it->second.hp <= 0)
     {
-        result.status = States::target_dead;
+        result.state = States::target_dead;
         return result;
     }
     std::int32_t distance = std::abs(attacker_it->second.x - target_it->second.x) + std::abs(attacker_it->second.y - target_it->second.y);
     if (distance > 1)
     {
-        result.status = States::target_out_of_range;
+        result.state = States::target_out_of_range;
         return result;
     }
     target_it->second.hp -= ATTACK_DAMAGE;
-    result.status = States::success;
+    result.state = States::success;
     result.remaining_hp = target_it->second.hp;
     result.target_eliminated = target_it->second.hp <= 0;
     return result;

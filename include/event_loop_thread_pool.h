@@ -14,8 +14,8 @@ public:
     ~EventLoopThreadPool() = default;
     EventLoopThreadPool(const EventLoopThreadPool &) = delete;
     EventLoopThreadPool &operator=(const EventLoopThreadPool &) = delete;
-    bool start();
-    EventLoop *get_next_loop();
+    bool start();                       // 启动全部工作线程
+    EventLoop *get_next_loop();         // 轮询取下一个工作线程的 EventLoop（用于分发连接）
     bool started() const;
     std::size_t size() const;
 private:

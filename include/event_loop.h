@@ -20,15 +20,15 @@ public:
     ~EventLoop();
     EventLoop(const EventLoop &) = delete;
     EventLoop &operator=(const EventLoop &) = delete;
-    bool valid() const;
-    bool loop();
-    void quit();
-    void run_in_loop(Functor functor);
-    void queue_in_loop(Functor functor);
-    bool add_fd(int fd, uint32_t events, EventCallback callback);
-    bool update_fd(int fd, uint32_t events);
-    bool remove_fd(int fd);
-    bool is_in_loop_thread() const;
+    bool valid() const;                       // epoll/eventfd 是否创建成功
+    bool loop();                              // 进入事件循环（阻塞，须在 loop 线程调用）
+    void quit();                              // 退出事件循环
+    void run_in_loop(Functor functor);        // 在 loop 线程执行；已在则直接执行
+    void queue_in_loop(Functor functor);      // 投递到 loop 线程队列（总是异步）
+    bool add_fd(int fd, uint32_t events, EventCallback callback);   // 注册 fd 到 epoll（须在 loop 线程）
+    bool update_fd(int fd, uint32_t events);  // 修改 fd 监听的事件
+    bool remove_fd(int fd);                   // 从 epoll 注销 fd
+    bool is_in_loop_thread() const;           // 当前线程是否就是 loop 线程
 private:
     int epoll_fd_;
     int wakeup_fd_;

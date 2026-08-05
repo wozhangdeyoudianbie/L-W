@@ -28,6 +28,37 @@ namespace
         value = ntohl(network_value);
         return true;
     }
+    bool read_i32(const std::string &data, std::size_t offset, std::int32_t &value)
+    {
+        std::uint32_t raw_value = 0;
+        if (!read_u32(data, offset, raw_value))
+        {
+            return false;
+        }
+        if (raw_value <= static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()))
+        {
+            value = static_cast<std::int32_t>(raw_value);
+            return true;
+        }
+        const std::uint32_t magnitude = std::numeric_limits<std::uint32_t>::max() - raw_value;
+        value = -1 - static_cast<std::int32_t>(magnitude);
+        return true;
+    }
+    bool read_u64(const std::string &data, std::size_t offset, std::uint64_t &value)
+    {
+        if (offset > data.size() || data.size() - offset < sizeof(std::uint64_t))
+        {
+            return false;
+        }
+        std::uint32_t high = 0;
+        std::uint32_t low = 0;
+        if (!read_u32(data, offset, high) || !read_u32(data, offset + 4, low))
+        {
+            return false;
+        }
+        value = (static_cast<std::uint64_t>(high) << 32) | low;
+        return true;
+    }
     void append_u16(std::string &data, std::uint16_t value)
     {
         const std::uint16_t network_value = htons(value);
@@ -44,6 +75,11 @@ namespace
         const std::uint32_t low = static_cast<std::uint32_t>(value & 0xffffffffULL);
         append_u32(data, high);
         append_u32(data, low);
+    }
+    void append_i32(std::string &data, std::int32_t value)
+    {
+        const std::uint32_t network_value = htonl(static_cast<std::uint32_t>(value));
+        data.append(reinterpret_cast<const char *>(&network_value), sizeof(network_value));
     }
 }
 
@@ -91,6 +127,42 @@ bool Protocol::decode_chat_request(const std::string &payload, ChatRequest &requ
     }
     ChatRequest temp_;
     temp_.message = payload.substr(offest, message_size);
+    request = std::move(temp_);
+    return true;
+}
+
+bool Protocol::decode_move_request(const std::string &payload, MoveRequest &request)
+{
+    if (payload.size() != 8)
+    {
+        return false;
+    }
+    std::int32_t dx = 0;
+    std::int32_t dy = 0;
+    if (!read_i32(payload, 0, dx) || !read_i32(payload, 4, dy))
+    {
+        return false;
+    }
+    MoveRequest temp_;
+    temp_.dx = dx;
+    temp_.dy = dy;
+    request = std::move(temp_);
+    return true;
+}
+
+bool Protocol::decode_attack_request(const std::string &payload, AttackRequest &request)
+{
+    if (payload.size() != 8)
+    {
+        return false;
+    }
+    std::uint64_t target_player_id = 0;
+    if (!read_u64(payload, 0, target_player_id))
+    {
+        return false;
+    }
+    AttackRequest temp_;
+    temp_.target_player_id = target_player_id;
     request = std::move(temp_);
     return true;
 }
@@ -182,6 +254,8 @@ bool Protocol::encode_error(MessageType request_type, ErrorCode error_code, std:
         case MessageType::join:
         case MessageType::leave:
         case MessageType::chat:
+        case MessageType::move:
+        case MessageType::attack:
             break;
         default:
             return false;
@@ -196,6 +270,8 @@ bool Protocol::encode_error(MessageType request_type, ErrorCode error_code, std:
         case ErrorCode::invalid_message:
         case ErrorCode::player_id_exhausted:
         case ErrorCode::room_not_joinable:
+        case ErrorCode::room_not_running:
+        case ErrorCode::already_submitted:
             break;
         default:
             return false;
@@ -207,3 +283,31 @@ bool Protocol::encode_error(MessageType request_type, ErrorCode error_code, std:
     return true;
 }
 
+bool Protocol::encode_state_snapshot(std::uint32_t room_id, std::uint64_t tick_id, const std::vector<PlayerGameState> &states, std::string &payload)
+{
+    payload.clear();
+    if (states.size() > std::numeric_limits<std::uint16_t>::max())
+    {
+        return false;
+    }
+    for (const auto &state : states)
+    {
+        if (state.player_id == 0)
+        {
+            return false;
+        }
+    }
+    std::string temp_;
+    append_u32(temp_, room_id);
+    append_u64(temp_, tick_id);
+    append_u16(temp_, static_cast<std::uint16_t>(states.size()));
+    for (const auto &state : states)
+    {
+        append_u64(temp_, state.player_id);
+        append_i32(temp_, state.x);
+        append_i32(temp_, state.y);
+        append_i32(temp_, state.hp);
+    }
+    payload = std::move(temp_);
+    return true;
+}

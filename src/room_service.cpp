@@ -5,53 +5,63 @@
 
 namespace
 {
-    bool status_to_error_code(RoomManager::Status status, ErrorCode &error_code)
+    bool state_to_error_code(RoomManager::States state, ErrorCode &error_code)
     {
-        switch (status)
+        switch (state)
         {
-            case RoomManager::Status::room_not_found:
+            case RoomManager::States::room_not_found:
                 {
                     error_code = ErrorCode::room_not_found;
                     return true;
                 }
-            case RoomManager::Status::room_full:
+            case RoomManager::States::room_full:
                 {
                     error_code = ErrorCode::room_full;
                     return true;
                 }
-            case RoomManager::Status::room_not_joinable:
+            case RoomManager::States::room_not_joinable:
                 {
                     error_code = ErrorCode::room_not_joinable;
                     return true;
                 }
-            case RoomManager::Status::already_in_room:
+            case RoomManager::States::already_in_room:
                 {
                     error_code = ErrorCode::already_in_room;
                     return true;
                 }
-            case RoomManager::Status::not_in_room:
+            case RoomManager::States::not_in_room:
                 {
                     error_code = ErrorCode::not_in_room;
                     return true;
                 }
-            case RoomManager::Status::invalid_player_name:
+            case RoomManager::States::invalid_player_name:
                 {
                     error_code = ErrorCode::invalid_player_name;
                     return true;
                 }
-            case RoomManager::Status::invalid_message:
+            case RoomManager::States::invalid_message:
                 {
                     error_code = ErrorCode::invalid_message;
                     return true;
                 }
-            case RoomManager::Status::player_id_exhausted:
+            case RoomManager::States::player_id_exhausted:
                 {
                     error_code = ErrorCode::player_id_exhausted;
                     return true;
                 }
-            case RoomManager::Status::success:
-            case RoomManager::Status::invalid_connection:
-            case RoomManager::Status::internal_error:
+            case RoomManager::States::room_not_running:
+                {
+                    error_code = ErrorCode::room_not_running;
+                    return true;
+                }
+            case RoomManager::States::already_submitted:
+                {
+                    error_code = ErrorCode::already_submitted;
+                    return true;
+                }
+            case RoomManager::States::success:
+            case RoomManager::States::invalid_connection:
+            case RoomManager::States::internal_error:
                 {
                     return false;
                 }
@@ -104,7 +114,7 @@ void RoomService::handle_connection_closed(const Connection::ConnectionPtr &conn
             return;
         }
         RoomManager::LeaveResult result = room_manager_.disconnect(connection);
-        if (result.status != RoomManager::Status::success || result.player_id == 0)
+        if (result.state != RoomManager::States::success || result.player_id == 0)
         {
             return;
         }
@@ -153,6 +163,16 @@ void RoomService::handle_frame_in_loop(const Connection::ConnectionPtr &connecti
                 handle_chat(connection, payload);
                 return;
             }
+        case MessageType::move:
+            {
+                handle_move(connection, payload);
+                return;
+            }
+        case MessageType::attack:
+            {
+                handle_attack(connection, payload);
+                return;
+            }
         default:
             {
                 return;
@@ -169,10 +189,10 @@ void RoomService::handle_join(const Connection::ConnectionPtr &connection, const
         return;
     }
     RoomManager::JoinResult result = room_manager_.join(connection, request.room_id, request.player_name);
-    if (result.status != RoomManager::Status::success)
+    if (result.state != RoomManager::States::success)
     {
         ErrorCode error_code = ErrorCode::invalid_player_name;
-        if (status_to_error_code(result.status, error_code))
+        if (state_to_error_code(result.state, error_code))
         {
             send_error(connection, MessageType::join, error_code);
         }
@@ -203,10 +223,10 @@ void RoomService::handle_leave(const Connection::ConnectionPtr &connection, cons
         return;
     }
     RoomManager::LeaveResult result = room_manager_.leave(connection);
-    if (result.status != RoomManager::Status::success)
+    if (result.state != RoomManager::States::success)
     {
         ErrorCode error_code = ErrorCode::not_in_room;
-        if (status_to_error_code(result.status, error_code))
+        if (state_to_error_code(result.state, error_code))
         {
             send_error(connection, MessageType::leave, error_code);
         }
@@ -238,10 +258,10 @@ void RoomService::handle_chat(const Connection::ConnectionPtr &connection, const
         return;
     }
     RoomManager::ChatResult result = room_manager_.chat(connection, request.message);
-    if (result.status != RoomManager::Status::success)
+    if (result.state != RoomManager::States::success)
     {
         ErrorCode error_code = ErrorCode::invalid_message;
-        if (status_to_error_code(result.status, error_code))
+        if (state_to_error_code(result.state, error_code))
         {
             send_error(connection, MessageType::chat, error_code);
         }
@@ -287,6 +307,36 @@ bool RoomService::broadcast_frame(const std::vector<Connection::ConnectionPtr> &
     return true;
 }
 
+void RoomService::handle_tick(std::uint64_t expirations)
+{
+    if (!base_loop_)
+    {
+        return;
+    }
+    if (!base_loop_->is_in_loop_thread())
+    {
+        return;
+    }
+    if (expirations == 0)
+    {
+        return;
+    }
+    const std::vector<RoomManager::TickResult> results = room_manager_.tick_rooms();
+    for (const auto &result : results)
+    {
+        if (result.notify_connections.empty())
+        {
+            continue;
+        }
+        std::string payload;
+        if (!Protocol::encode_state_snapshot(result.room_id, result.tick_id, result.snapshot, payload))
+        {
+            continue;
+        }
+        broadcast_frame(result.notify_connections, MessageType::state_snapshot, payload);
+    }
+}
+
 bool RoomService::send_error(const Connection::ConnectionPtr &connection, MessageType request_type, ErrorCode error_code)
 {
     std::string payload;
@@ -295,4 +345,44 @@ bool RoomService::send_error(const Connection::ConnectionPtr &connection, Messag
         return false;
     }
     return send_frame(connection, MessageType::error, payload);
+}
+
+void RoomService::handle_move(const Connection::ConnectionPtr &connection, const std::string &payload)
+{
+    MoveRequest request;
+    if (!Protocol::decode_move_request(payload, request))
+    {
+        send_error(connection, MessageType::move, ErrorCode::invalid_message);
+        return;
+    }
+    RoomManager::CommandResult result = room_manager_.move(connection, request.dx, request.dy);
+    if (result.state != RoomManager::States::success)
+    {
+        ErrorCode error_code = ErrorCode::invalid_message;
+        if (state_to_error_code(result.state, error_code))
+        {
+            send_error(connection, MessageType::move, error_code);
+        }
+        return;
+    }
+}
+
+void RoomService::handle_attack(const Connection::ConnectionPtr &connection, const std::string &payload)
+{
+    AttackRequest request;
+    if (!Protocol::decode_attack_request(payload, request))
+    {
+        send_error(connection, MessageType::attack, ErrorCode::invalid_message);
+        return;
+    }
+    RoomManager::CommandResult result = room_manager_.attack(connection, request.target_player_id);
+    if (result.state != RoomManager::States::success)
+    {
+        ErrorCode error_code = ErrorCode::invalid_message;
+        if (state_to_error_code(result.state, error_code))
+        {
+            send_error(connection, MessageType::attack, error_code);
+        }
+        return;
+    }
 }

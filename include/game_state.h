@@ -36,7 +36,7 @@ public:
     };
     struct Attackresult
     {
-        States status;
+        States state;
         std::uint64_t attacker_id;
         std::uint64_t target_player_id;
         std::int32_t remaining_hp;
@@ -45,12 +45,12 @@ public:
     Gamestate();
     std::size_t player_count() const;
     bool contains(std::uint64_t player_id) const;
-    States initialize(const std::vector<std::uint64_t> &player_ids);
-    States remove_player(std::uint64_t player_id);
-    States move_player(std::uint64_t player_id, std::int32_t dx, std::int32_t dy);
-    bool player_state(std::uint64_t player_id, PlayerGameState &state) const;
-    std::vector<PlayerGameState> snapshot() const;
-    Attackresult attack_player(std::uint64_t attacker_id, std::uint64_t target_player_id);
+    States initialize(const std::vector<std::uint64_t> &player_ids);   // 用玩家列表初始化权威状态（失败不改原状态）
+    States remove_player(std::uint64_t player_id);                     // 删除玩家
+    States move_player(std::uint64_t player_id, std::int32_t dx, std::int32_t dy);  // 玩家移动一格（上下左右）
+    bool player_state(std::uint64_t player_id, PlayerGameState &state) const;       // 查询单个玩家状态
+    std::vector<PlayerGameState> snapshot() const;                    // 全部玩家快照（按 id 排序）
+    Attackresult attack_player(std::uint64_t attacker_id, std::uint64_t target_player_id);  // 攻击：扣目标 10 点血
 private:
     static constexpr std::int32_t INITIAL_HP = 100;
     static constexpr std::int32_t MIN_POSITION = 0;
