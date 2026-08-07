@@ -2,6 +2,7 @@
 #include<arpa/inet.h>
 #include<cstring>
 
+// 打包一帧：4B长度+2B类型+负载
 bool Codec::encode(std::uint16_t type, const std::string &payload, std::string &frame)
 {
     frame.clear();
@@ -19,6 +20,7 @@ bool Codec::encode(std::uint16_t type, const std::string &payload, std::string &
     return true;
 }
 
+// 拆帧：处理粘包/半包，逐帧回调
 bool Codec::decode(Buffer &buffer, const FrameCallback &callback)
 {
     if (!callback)

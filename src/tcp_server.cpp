@@ -15,6 +15,7 @@ TcpServer::TcpServer(EventLoop *base_loop, std::uint16_t port, std::size_t threa
 {
 }
 
+// 创建监听 socket（非阻塞）
 bool TcpServer::create_listen_socket()
 {
     if (listen_fd_ != -1 || listen_registered_)
@@ -60,6 +61,7 @@ bool TcpServer::create_listen_socket()
     return true;
 }
 
+// 关闭监听 socket
 void TcpServer::close_listen_socket()
 {
     if (listen_registered_)
@@ -74,6 +76,7 @@ void TcpServer::close_listen_socket()
     }
 }
 
+// 启动服务器
 bool TcpServer::start()
 {
     if (!base_loop_ || !base_loop_->valid() || !base_loop_->is_in_loop_thread() || started_ || listen_fd_ != -1 || listen_registered_ || !message_callback_)
@@ -103,11 +106,13 @@ bool TcpServer::start()
     return true;
 }
 
+// 查询：是否已启动
 bool TcpServer::started() const
 {
     return started_;
 }
 
+// 接受新连接并分发到工作线程
 void TcpServer::handle_accept(uint32_t events)
 {
     if (!base_loop_ || !base_loop_->is_in_loop_thread())
@@ -175,6 +180,7 @@ void TcpServer::handle_accept(uint32_t events)
     }
 }
 
+// 移除连接（投递到 base 线程）
 void TcpServer::remove_connection(const Connection::ConnectionPtr &connection)
 {
     if (!base_loop_ || !connection)
@@ -187,6 +193,7 @@ void TcpServer::remove_connection(const Connection::ConnectionPtr &connection)
     });
 }
 
+// 移除连接（base 线程执行）
 void TcpServer::remove_connection_in_loop(const Connection::ConnectionPtr &connection)
 {
     if (!base_loop_ || !base_loop_->is_in_loop_thread())
@@ -238,6 +245,7 @@ void TcpServer::remove_connection_in_loop(const Connection::ConnectionPtr &conne
     });
 }
 
+// 设置消息回调
 void TcpServer::set_message_callback(Connection::MessageCallback callback)
 {
     if (started_)
@@ -247,6 +255,7 @@ void TcpServer::set_message_callback(Connection::MessageCallback callback)
     message_callback_ = std::move(callback);
 }
 
+// 设置连接关闭回调
 void TcpServer::set_connection_closed_callback(TcpServer::ConnectionClosedCallback callback)
 {
     if (started_)

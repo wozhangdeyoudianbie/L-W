@@ -82,7 +82,7 @@ namespace
         CHECK(manager.room_count() == 2);
 
         RoomManager::JoinResult result = manager.join(connection, 2, "zero-capacity");
-        CHECK(result.status == RoomManager::Status::room_full);
+        CHECK(result.state == RoomManager::States::room_full);
         CHECK(!manager.contains_connection(connection));
 
         return true;
@@ -99,7 +99,7 @@ namespace
         CHECK(manager.add_room(10, 3));
 
         RoomManager::JoinResult result_a = manager.join(connection_a, 10, "Alice");
-        CHECK(result_a.status == RoomManager::Status::success);
+        CHECK(result_a.state == RoomManager::States::success);
         CHECK(result_a.room_id == 10);
         CHECK(result_a.player_id == 1);
         CHECK(result_a.members.empty());
@@ -107,7 +107,7 @@ namespace
         CHECK(manager.contains_connection(connection_a));
 
         RoomManager::JoinResult result_b = manager.join(connection_b, 10, "Bob");
-        CHECK(result_b.status == RoomManager::Status::success);
+        CHECK(result_b.state == RoomManager::States::success);
         CHECK(result_b.room_id == 10);
         CHECK(result_b.player_id == 2);
         CHECK(result_b.members.size() == 1);
@@ -116,7 +116,7 @@ namespace
         CHECK(manager.contains_connection(connection_b));
 
         RoomManager::JoinResult result_c = manager.join(connection_c, 10, binary_name);
-        CHECK(result_c.status == RoomManager::Status::success);
+        CHECK(result_c.state == RoomManager::States::success);
         CHECK(result_c.room_id == 10);
         CHECK(result_c.player_id == 3);
         CHECK(result_c.members.size() == 2);
@@ -141,43 +141,47 @@ namespace
         CHECK(manager.add_room(2, 2));
 
         RoomManager::JoinResult null_result = manager.join(Connection::ConnectionPtr{}, 1, "null");
-        CHECK(null_result.status == RoomManager::Status::invalid_connection);
+        CHECK(null_result.state == RoomManager::States::invalid_connection);
 
         RoomManager::JoinResult missing_result = manager.join(connection_b, 999, "Bob");
-        CHECK(missing_result.status == RoomManager::Status::room_not_found);
+        CHECK(missing_result.state == RoomManager::States::room_not_found);
         CHECK(!manager.contains_connection(connection_b));
 
         RoomManager::JoinResult empty_name_result = manager.join(connection_b, 1, "");
-        CHECK(empty_name_result.status == RoomManager::Status::invalid_player_name);
+        CHECK(empty_name_result.state == RoomManager::States::invalid_player_name);
         CHECK(!manager.contains_connection(connection_b));
 
         std::string oversized_name(Protocol::MAX_PLAYER_NAME_SIZE + 1, 'n');
         RoomManager::JoinResult oversized_name_result = manager.join(connection_b, 1, oversized_name);
-        CHECK(oversized_name_result.status == RoomManager::Status::invalid_player_name);
+        CHECK(oversized_name_result.state == RoomManager::States::invalid_player_name);
         CHECK(!manager.contains_connection(connection_b));
 
         RoomManager::JoinResult result_a = manager.join(connection_a, 1, "Alice");
-        CHECK(result_a.status == RoomManager::Status::success);
+        CHECK(result_a.state == RoomManager::States::success);
 
-        RoomManager::JoinResult room_full_result = manager.join(connection_b, 1, "Bob");
-        CHECK(room_full_result.status == RoomManager::Status::room_full);
+        RoomManager::JoinResult not_joinable_result = manager.join(connection_b, 1, "Bob");
+        CHECK(not_joinable_result.state == RoomManager::States::room_not_joinable);
+        CHECK(not_joinable_result.room_id == 0);
+        CHECK(not_joinable_result.player_id == 0);
+        CHECK(not_joinable_result.members.empty());
+        CHECK(not_joinable_result.notify_connections.empty());
         CHECK(!manager.contains_connection(connection_b));
 
         std::string maximum_name(Protocol::MAX_PLAYER_NAME_SIZE, 'm');
         RoomManager::JoinResult result_b = manager.join(connection_b, 2, maximum_name);
-        CHECK(result_b.status == RoomManager::Status::success);
+        CHECK(result_b.state == RoomManager::States::success);
         CHECK(manager.contains_connection(connection_b));
 
         RoomManager::JoinResult duplicate_result = manager.join(connection_a, 2, "Alice-again");
-        CHECK(duplicate_result.status == RoomManager::Status::already_in_room);
+        CHECK(duplicate_result.state == RoomManager::States::already_in_room);
 
         RoomManager::ChatResult chat_a = manager.chat(connection_a, "still-in-room-one");
-        CHECK(chat_a.status == RoomManager::Status::success);
+        CHECK(chat_a.state == RoomManager::States::success);
         CHECK(chat_a.room_id == 1);
         CHECK(chat_a.player_id == result_a.player_id);
 
         RoomManager::ChatResult chat_b = manager.chat(connection_b, "still-in-room-two");
-        CHECK(chat_b.status == RoomManager::Status::success);
+        CHECK(chat_b.state == RoomManager::States::success);
         CHECK(chat_b.room_id == 2);
         CHECK(chat_b.player_id == result_b.player_id);
 
@@ -201,28 +205,28 @@ namespace
         RoomManager::JoinResult result_b = manager.join(connection_b, 10, "Bob");
         RoomManager::JoinResult result_c = manager.join(connection_c, 20, "Carol");
 
-        CHECK(result_a.status == RoomManager::Status::success);
-        CHECK(result_b.status == RoomManager::Status::success);
-        CHECK(result_c.status == RoomManager::Status::success);
+        CHECK(result_a.state == RoomManager::States::success);
+        CHECK(result_b.state == RoomManager::States::success);
+        CHECK(result_c.state == RoomManager::States::success);
 
         RoomManager::ChatResult null_result = manager.chat(Connection::ConnectionPtr{}, "hello");
-        CHECK(null_result.status == RoomManager::Status::invalid_connection);
+        CHECK(null_result.state == RoomManager::States::invalid_connection);
 
         RoomManager::ChatResult empty_result = manager.chat(connection_a, "");
-        CHECK(empty_result.status == RoomManager::Status::invalid_message);
+        CHECK(empty_result.state == RoomManager::States::invalid_message);
         CHECK(manager.contains_connection(connection_a));
 
         std::string oversized_message(Protocol::MAX_CHAT_MESSAGE_SIZE + 1, 'x');
         RoomManager::ChatResult oversized_result = manager.chat(connection_a, oversized_message);
-        CHECK(oversized_result.status == RoomManager::Status::invalid_message);
+        CHECK(oversized_result.state == RoomManager::States::invalid_message);
         CHECK(manager.contains_connection(connection_a));
 
         RoomManager::ChatResult not_in_room_result = manager.chat(connection_d, "hello");
-        CHECK(not_in_room_result.status == RoomManager::Status::not_in_room);
+        CHECK(not_in_room_result.state == RoomManager::States::not_in_room);
 
         std::string binary_message("hello\0room", 10);
         RoomManager::ChatResult chat_a = manager.chat(connection_a, binary_message);
-        CHECK(chat_a.status == RoomManager::Status::success);
+        CHECK(chat_a.state == RoomManager::States::success);
         CHECK(chat_a.room_id == 10);
         CHECK(chat_a.player_id == result_a.player_id);
         CHECK(same_connections(chat_a.notify_connections, {connection_a, connection_b}));
@@ -230,11 +234,11 @@ namespace
 
         std::string maximum_message(Protocol::MAX_CHAT_MESSAGE_SIZE, 'm');
         RoomManager::ChatResult maximum_result = manager.chat(connection_b, maximum_message);
-        CHECK(maximum_result.status == RoomManager::Status::success);
+        CHECK(maximum_result.state == RoomManager::States::success);
         CHECK(same_connections(maximum_result.notify_connections, {connection_a, connection_b}));
 
         RoomManager::ChatResult chat_c = manager.chat(connection_c, "room-twenty");
-        CHECK(chat_c.status == RoomManager::Status::success);
+        CHECK(chat_c.state == RoomManager::States::success);
         CHECK(chat_c.room_id == 20);
         CHECK(chat_c.player_id == result_c.player_id);
         CHECK(same_connections(chat_c.notify_connections, {connection_c}));
@@ -245,7 +249,7 @@ namespace
         return true;
     }
 
-    bool test_leave_and_rejoin()
+    bool test_leave_and_running_room_rejects_rejoin()
     {
         RoomManager manager;
         auto connection_a = make_connection();
@@ -256,17 +260,17 @@ namespace
 
         RoomManager::JoinResult result_a = manager.join(connection_a, 30, "Alice");
         RoomManager::JoinResult result_b = manager.join(connection_b, 30, "Bob");
-        CHECK(result_a.status == RoomManager::Status::success);
-        CHECK(result_b.status == RoomManager::Status::success);
+        CHECK(result_a.state == RoomManager::States::success);
+        CHECK(result_b.state == RoomManager::States::success);
 
         RoomManager::LeaveResult null_result = manager.leave(Connection::ConnectionPtr{});
-        CHECK(null_result.status == RoomManager::Status::invalid_connection);
+        CHECK(null_result.state == RoomManager::States::invalid_connection);
 
         RoomManager::LeaveResult not_in_room_result = manager.leave(connection_c);
-        CHECK(not_in_room_result.status == RoomManager::Status::not_in_room);
+        CHECK(not_in_room_result.state == RoomManager::States::not_in_room);
 
         RoomManager::LeaveResult leave_a = manager.leave(connection_a);
-        CHECK(leave_a.status == RoomManager::Status::success);
+        CHECK(leave_a.state == RoomManager::States::success);
         CHECK(leave_a.room_id == 30);
         CHECK(leave_a.player_id == result_a.player_id);
         CHECK(same_connections(leave_a.notify_connections, {connection_b}));
@@ -274,18 +278,20 @@ namespace
         CHECK(manager.contains_connection(connection_b));
 
         RoomManager::LeaveResult repeated_leave = manager.leave(connection_a);
-        CHECK(repeated_leave.status == RoomManager::Status::not_in_room);
+        CHECK(repeated_leave.state == RoomManager::States::not_in_room);
 
         RoomManager::ChatResult chat_b = manager.chat(connection_b, "still-here");
-        CHECK(chat_b.status == RoomManager::Status::success);
+        CHECK(chat_b.state == RoomManager::States::success);
         CHECK(same_connections(chat_b.notify_connections, {connection_b}));
 
         RoomManager::JoinResult rejoin_a = manager.join(connection_a, 30, "Alice-again");
-        CHECK(rejoin_a.status == RoomManager::Status::success);
-        CHECK(rejoin_a.player_id == 3);
-        CHECK(rejoin_a.members.size() == 1);
-        CHECK(contains_member(rejoin_a.members, result_b.player_id, "Bob"));
-        CHECK(same_connections(rejoin_a.notify_connections, {connection_b}));
+        CHECK(rejoin_a.state == RoomManager::States::room_not_joinable);
+        CHECK(rejoin_a.room_id == 0);
+        CHECK(rejoin_a.player_id == 0);
+        CHECK(rejoin_a.members.empty());
+        CHECK(rejoin_a.notify_connections.empty());
+        CHECK(!manager.contains_connection(connection_a));
+        CHECK(manager.contains_connection(connection_b));
 
         manager.disconnect(connection_a);
         manager.disconnect(connection_b);
@@ -302,37 +308,37 @@ namespace
         CHECK(manager.add_room(40, 2));
 
         RoomManager::LeaveResult null_result = manager.disconnect(Connection::ConnectionPtr{});
-        CHECK(null_result.status == RoomManager::Status::invalid_connection);
+        CHECK(null_result.state == RoomManager::States::invalid_connection);
 
         RoomManager::LeaveResult unused_first = manager.disconnect(connection_c);
-        CHECK(unused_first.status == RoomManager::Status::success);
+        CHECK(unused_first.state == RoomManager::States::success);
         CHECK(unused_first.room_id == 0);
         CHECK(unused_first.player_id == 0);
         CHECK(unused_first.notify_connections.empty());
 
         RoomManager::LeaveResult unused_second = manager.disconnect(connection_c);
-        CHECK(unused_second.status == RoomManager::Status::success);
+        CHECK(unused_second.state == RoomManager::States::success);
 
         RoomManager::JoinResult result_a = manager.join(connection_a, 40, "Alice");
         RoomManager::JoinResult result_b = manager.join(connection_b, 40, "Bob");
-        CHECK(result_a.status == RoomManager::Status::success);
-        CHECK(result_b.status == RoomManager::Status::success);
+        CHECK(result_a.state == RoomManager::States::success);
+        CHECK(result_b.state == RoomManager::States::success);
 
         RoomManager::LeaveResult disconnect_a = manager.disconnect(connection_a);
-        CHECK(disconnect_a.status == RoomManager::Status::success);
+        CHECK(disconnect_a.state == RoomManager::States::success);
         CHECK(disconnect_a.room_id == 40);
         CHECK(disconnect_a.player_id == result_a.player_id);
         CHECK(same_connections(disconnect_a.notify_connections, {connection_b}));
         CHECK(!manager.contains_connection(connection_a));
 
         RoomManager::LeaveResult repeated_disconnect = manager.disconnect(connection_a);
-        CHECK(repeated_disconnect.status == RoomManager::Status::success);
+        CHECK(repeated_disconnect.state == RoomManager::States::success);
         CHECK(repeated_disconnect.room_id == 0);
         CHECK(repeated_disconnect.player_id == 0);
         CHECK(repeated_disconnect.notify_connections.empty());
 
         RoomManager::ChatResult chat_b = manager.chat(connection_b, "still-online");
-        CHECK(chat_b.status == RoomManager::Status::success);
+        CHECK(chat_b.state == RoomManager::States::success);
         CHECK(chat_b.player_id == result_b.player_id);
         CHECK(same_connections(chat_b.notify_connections, {connection_b}));
 
@@ -356,15 +362,15 @@ namespace
             RoomManager::JoinResult result_b = manager.join(connection_b, 1, "B-" + std::to_string(i));
             RoomManager::JoinResult result_c = manager.join(connection_c, 2, "C-" + std::to_string(i));
 
-            CHECK(result_a.status == RoomManager::Status::success);
-            CHECK(result_b.status == RoomManager::Status::success);
-            CHECK(result_c.status == RoomManager::Status::success);
+            CHECK(result_a.state == RoomManager::States::success);
+            CHECK(result_b.state == RoomManager::States::success);
+            CHECK(result_c.state == RoomManager::States::success);
 
-            CHECK(manager.chat(connection_a, "message").status == RoomManager::Status::success);
-            CHECK(manager.disconnect(connection_a).status == RoomManager::Status::success);
-            CHECK(manager.disconnect(connection_a).status == RoomManager::Status::success);
-            CHECK(manager.leave(connection_b).status == RoomManager::Status::success);
-            CHECK(manager.disconnect(connection_c).status == RoomManager::Status::success);
+            CHECK(manager.chat(connection_a, "message").state == RoomManager::States::success);
+            CHECK(manager.disconnect(connection_a).state == RoomManager::States::success);
+            CHECK(manager.disconnect(connection_a).state == RoomManager::States::success);
+            CHECK(manager.leave(connection_b).state == RoomManager::States::success);
+            CHECK(manager.disconnect(connection_c).state == RoomManager::States::success);
 
             CHECK(!manager.contains_connection(connection_a));
             CHECK(!manager.contains_connection(connection_b));
@@ -384,7 +390,7 @@ int main()
         {"join_members_and_notifications", test_join_members_and_notifications},
         {"join_failures_preserve_state", test_join_failures_preserve_state},
         {"chat_validation_and_room_isolation", test_chat_validation_and_room_isolation},
-        {"leave_and_rejoin", test_leave_and_rejoin},
+        {"leave_and_running_room_rejects_rejoin", test_leave_and_running_room_rejects_rejoin},
         {"disconnect_is_idempotent", test_disconnect_is_idempotent},
         {"repeated_lifecycle", test_repeated_lifecycle}
     };

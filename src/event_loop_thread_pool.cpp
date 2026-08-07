@@ -6,6 +6,7 @@ EventLoopThreadPool::EventLoopThreadPool(EventLoop *base_loop, std::size_t threa
 {
 }
 
+// 启动全部工作线程
 bool EventLoopThreadPool::start()
 {
     if (base_loop_ == nullptr)
@@ -46,6 +47,7 @@ bool EventLoopThreadPool::start()
     return true;
 }
 
+// 轮询取下一个 loop
 EventLoop *EventLoopThreadPool::get_next_loop()
 {
     if (!started_)
@@ -69,11 +71,13 @@ EventLoop *EventLoopThreadPool::get_next_loop()
     return result;
 }
 
+// 查询：是否已启动
 bool EventLoopThreadPool::started() const
 {
     return started_;
 }
 
+// 查询：线程数
 std::size_t EventLoopThreadPool::size() const
 {
     return loops_.size();

@@ -83,6 +83,7 @@ namespace
     }
 }
 
+// 解析加入请求
 bool Protocol::decode_join_request(const std::string &payload, JoinRequest &request)
 {
     std::uint32_t room_id = 0;
@@ -107,11 +108,13 @@ bool Protocol::decode_join_request(const std::string &payload, JoinRequest &requ
     return true;
 }
 
+// 解析离开请求
 bool Protocol::decode_leave_request(const std::string &payload)
 {
     return payload.empty();
 }
 
+// 解析聊天请求
 bool Protocol::decode_chat_request(const std::string &payload, ChatRequest &request)
 {
     std::uint16_t message_size = 0;
@@ -131,6 +134,7 @@ bool Protocol::decode_chat_request(const std::string &payload, ChatRequest &requ
     return true;
 }
 
+// 解析移动请求
 bool Protocol::decode_move_request(const std::string &payload, MoveRequest &request)
 {
     if (payload.size() != 8)
@@ -150,6 +154,7 @@ bool Protocol::decode_move_request(const std::string &payload, MoveRequest &requ
     return true;
 }
 
+// 解析攻击请求
 bool Protocol::decode_attack_request(const std::string &payload, AttackRequest &request)
 {
     if (payload.size() != 8)
@@ -167,6 +172,7 @@ bool Protocol::decode_attack_request(const std::string &payload, AttackRequest &
     return true;
 }
 
+// 编码加入成功响应
 bool Protocol::encode_join_ok(std::uint32_t room_id, std::uint64_t self_player_id, const std::vector<MemberInfo> &members, std::string &payload)
 {
     payload.clear();
@@ -195,6 +201,7 @@ bool Protocol::encode_join_ok(std::uint32_t room_id, std::uint64_t self_player_i
     return true;
 }
 
+// 编码新玩家加入事件
 bool Protocol::encode_player_joined(std::uint32_t room_id, std::uint64_t player_id, const std::string &player_name, std::string &payload)
 {
     payload.clear();
@@ -211,6 +218,7 @@ bool Protocol::encode_player_joined(std::uint32_t room_id, std::uint64_t player_
     return true;
 }
 
+// 编码离开成功响应
 bool Protocol::encode_leave_ok(std::uint32_t room_id, std::string &payload)
 {
     payload.clear();
@@ -220,6 +228,7 @@ bool Protocol::encode_leave_ok(std::uint32_t room_id, std::string &payload)
     return true;
 }
 
+// 编码玩家离开事件
 bool Protocol::encode_player_left(std::uint32_t room_id, std::uint64_t player_id, std::string &payload)
 {
     payload.clear();
@@ -230,6 +239,7 @@ bool Protocol::encode_player_left(std::uint32_t room_id, std::uint64_t player_id
     return true;
 }
 
+// 编码聊天广播事件
 bool Protocol::encode_chat_event(std::uint32_t room_id, std::uint64_t player_id, const std::string &message, std::string &payload)
 {
     payload.clear();
@@ -246,6 +256,7 @@ bool Protocol::encode_chat_event(std::uint32_t room_id, std::uint64_t player_id,
     return true;
 }
 
+// 编码错误响应
 bool Protocol::encode_error(MessageType request_type, ErrorCode error_code, std::string &payload)
 {
     payload.clear();
@@ -283,6 +294,7 @@ bool Protocol::encode_error(MessageType request_type, ErrorCode error_code, std:
     return true;
 }
 
+// 编码状态快照（房间+帧号+玩家状态）
 bool Protocol::encode_state_snapshot(std::uint32_t room_id, std::uint64_t tick_id, const std::vector<PlayerGameState> &states, std::string &payload)
 {
     payload.clear();

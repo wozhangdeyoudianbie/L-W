@@ -1,5 +1,6 @@
 #include "../include/thread_pool.h"
 
+// 构造：创建 worker 线程
 ThreadPool::ThreadPool(int thread_count)
 {
     stop = false;
@@ -16,6 +17,7 @@ ThreadPool::ThreadPool(int thread_count)
     }
 }
 
+// 析构：停止并回收线程
 ThreadPool::~ThreadPool()
 {
     {
@@ -32,6 +34,7 @@ ThreadPool::~ThreadPool()
     }
 }
 
+// 添加任务
 void ThreadPool::add_task(function<void()> task)
 {
     {
@@ -45,6 +48,7 @@ void ThreadPool::add_task(function<void()> task)
     cv.notify_one();
 }
 
+// 工作线程循环
 void ThreadPool::worker_loop()
 {
     while (true)

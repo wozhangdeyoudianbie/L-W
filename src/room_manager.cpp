@@ -1,6 +1,7 @@
 #include "room_manager.h"
 #include <utility>
 
+// 创建房间
 bool RoomManager::add_room(std::uint32_t room_id, std::size_t capacity)
 {
     if (contains_room(room_id))
@@ -12,16 +13,19 @@ bool RoomManager::add_room(std::uint32_t room_id, std::size_t capacity)
     return true;
 }
 
+// 查询：房间总数
 std::size_t RoomManager::room_count() const
 {
     return rooms_.size();
 }
 
+// 查询：房间是否存在
 bool RoomManager::contains_room(std::uint32_t room_id) const
 {
     return rooms_.find(room_id) != rooms_.end();
 }
 
+// 查询：连接是否已在某房间
 bool RoomManager::contains_connection(const Connection::ConnectionPtr &connection) const
 {
     if (!connection)
@@ -31,6 +35,7 @@ bool RoomManager::contains_connection(const Connection::ConnectionPtr &connectio
     return memberships_.find(connection.get()) != memberships_.end();
 }
 
+// 加入：校验后登记成员关系
 RoomManager::JoinResult RoomManager::join(const Connection::ConnectionPtr &connection, std::uint32_t room_id, const std::string &player_name)
 {
     JoinResult temp_;
@@ -69,9 +74,22 @@ RoomManager::JoinResult RoomManager::join(const Connection::ConnectionPtr &conne
                         temp_.state = States::internal_error;
                         return temp_;
                     }
+                    if (room.member_count() == room.capacity())
+                    {
+                        if (room.start(true) != Roomstatemachine::Transitionstates::success)
+                        {
+                            memberships_.erase(connection.get());
+                            room.leave(room_result.player_id);
+                            temp_.members.clear();
+                            temp_.notify_connections.clear();
+                            temp_.state = States::internal_error;
+                            return temp_;
+                        }
+                    }
                 }
                 catch (...)
                 {
+                    memberships_.erase(connection.get());
                     room.leave(room_result.player_id);
                     throw;
                 }
@@ -113,6 +131,7 @@ RoomManager::JoinResult RoomManager::join(const Connection::ConnectionPtr &conne
     }
 }
 
+// 离开：清除成员关系
 RoomManager::LeaveResult RoomManager::leave(const Connection::ConnectionPtr &connection)
 {
     LeaveResult temp_;
@@ -153,6 +172,7 @@ RoomManager::LeaveResult RoomManager::leave(const Connection::ConnectionPtr &con
     return temp_;
 }
 
+// 发言：校验消息并返回同房其他连接
 RoomManager::ChatResult RoomManager::chat(const Connection::ConnectionPtr &connection, const std::string &message) const
 {
     ChatResult temp_;
@@ -192,6 +212,7 @@ RoomManager::ChatResult RoomManager::chat(const Connection::ConnectionPtr &conne
     return temp_;
 }
 
+// 断线清理：等价 leave，未在房视为成功
 RoomManager::LeaveResult RoomManager::disconnect(const Connection::ConnectionPtr &connection)
 {
     LeaveResult result = leave(connection);
@@ -202,6 +223,7 @@ RoomManager::LeaveResult RoomManager::disconnect(const Connection::ConnectionPtr
     return result;
 }
 
+// 提交移动命令（仅运行中）
 RoomManager::CommandResult RoomManager::move(const Connection::ConnectionPtr &connection, std::int32_t dx, std::int32_t dy)
 {
     CommandResult temp_;
@@ -262,6 +284,7 @@ RoomManager::CommandResult RoomManager::move(const Connection::ConnectionPtr &co
     }
 }
 
+// 提交攻击命令（仅运行中）
 RoomManager::CommandResult RoomManager::attack(const Connection::ConnectionPtr &connection, std::uint64_t target_player_id)
 {
     CommandResult temp_;

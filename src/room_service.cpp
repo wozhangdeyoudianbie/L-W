@@ -5,6 +5,7 @@
 
 namespace
 {
+    // 状态码→协议错误码（无对应码返回 false）
     bool state_to_error_code(RoomManager::States state, ErrorCode &error_code)
     {
         switch (state)
@@ -75,6 +76,7 @@ RoomService::RoomService(EventLoop *base_loop)
 {
 }
 
+// 创建房间（须在 base 线程）
 bool RoomService::add_room(std::uint32_t room_id, std::size_t capacity)
 {
     if (!base_loop_ || !base_loop_->is_in_loop_thread())
@@ -84,6 +86,7 @@ bool RoomService::add_room(std::uint32_t room_id, std::size_t capacity)
     return room_manager_.add_room(room_id, capacity);
 }
 
+// 消息入口：拆帧后分发
 bool RoomService::handle_message(const Connection::ConnectionPtr &connection, Buffer &buffer)
 {
     if (!connection || !connection->loop())
@@ -101,6 +104,7 @@ bool RoomService::handle_message(const Connection::ConnectionPtr &connection, Bu
     });
 }
 
+// 连接断开清理
 void RoomService::handle_connection_closed(const Connection::ConnectionPtr &connection)
 {
     if (!base_loop_ || !connection)
@@ -127,6 +131,7 @@ void RoomService::handle_connection_closed(const Connection::ConnectionPtr &conn
     });
 }
 
+// 帧分发（跨线程投递到 base 线程）
 void RoomService::handle_frame(const Connection::ConnectionPtr &connection, std::uint16_t type, const std::string &payload)
 {
     if (!base_loop_ || !connection)
@@ -139,6 +144,7 @@ void RoomService::handle_frame(const Connection::ConnectionPtr &connection, std:
     });
 }
 
+// 帧分发（在 base 线程执行）
 void RoomService::handle_frame_in_loop(const Connection::ConnectionPtr &connection, std::uint16_t type, std::string payload)
 {
     if (!base_loop_ || !base_loop_->is_in_loop_thread() || !connection)
@@ -180,6 +186,7 @@ void RoomService::handle_frame_in_loop(const Connection::ConnectionPtr &connecti
     }
 }
 
+// 处理加入请求
 void RoomService::handle_join(const Connection::ConnectionPtr &connection, const std::string &payload)
 {
     JoinRequest request;
@@ -215,6 +222,7 @@ void RoomService::handle_join(const Connection::ConnectionPtr &connection, const
     broadcast_frame(result.notify_connections, MessageType::player_joined, event_payload);
 }
 
+// 处理离开请求
 void RoomService::handle_leave(const Connection::ConnectionPtr &connection, const std::string &payload)
 {
     if (!Protocol::decode_leave_request(payload))
@@ -249,6 +257,7 @@ void RoomService::handle_leave(const Connection::ConnectionPtr &connection, cons
     broadcast_frame(result.notify_connections, MessageType::player_left, event_payload);
 }
 
+// 处理聊天请求
 void RoomService::handle_chat(const Connection::ConnectionPtr &connection, const std::string &payload)
 {
     ChatRequest request;
@@ -275,6 +284,7 @@ void RoomService::handle_chat(const Connection::ConnectionPtr &connection, const
     broadcast_frame(result.notify_connections, MessageType::chat_event, event_payload);
 }
 
+// 给单个连接发帧
 bool RoomService::send_frame(const Connection::ConnectionPtr &connection, MessageType type, const std::string &payload)
 {
     if (!connection)
@@ -290,6 +300,7 @@ bool RoomService::send_frame(const Connection::ConnectionPtr &connection, Messag
     return true;
 }
 
+// 给一组连接广播帧（只编码一次）
 bool RoomService::broadcast_frame(const std::vector<Connection::ConnectionPtr> &connections, MessageType type, const std::string &payload)
 {
     std::string frame;
@@ -307,6 +318,7 @@ bool RoomService::broadcast_frame(const std::vector<Connection::ConnectionPtr> &
     return true;
 }
 
+// 定时结算：推进所有运行中房间并广播快照
 void RoomService::handle_tick(std::uint64_t expirations)
 {
     if (!base_loop_)
@@ -337,6 +349,7 @@ void RoomService::handle_tick(std::uint64_t expirations)
     }
 }
 
+// 发送错误帧
 bool RoomService::send_error(const Connection::ConnectionPtr &connection, MessageType request_type, ErrorCode error_code)
 {
     std::string payload;
@@ -347,6 +360,7 @@ bool RoomService::send_error(const Connection::ConnectionPtr &connection, Messag
     return send_frame(connection, MessageType::error, payload);
 }
 
+// 处理移动命令
 void RoomService::handle_move(const Connection::ConnectionPtr &connection, const std::string &payload)
 {
     MoveRequest request;
@@ -367,6 +381,7 @@ void RoomService::handle_move(const Connection::ConnectionPtr &connection, const
     }
 }
 
+// 处理攻击命令
 void RoomService::handle_attack(const Connection::ConnectionPtr &connection, const std::string &payload)
 {
     AttackRequest request;

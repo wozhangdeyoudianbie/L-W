@@ -4,6 +4,7 @@
 #include <utility>
 #include <sys/eventfd.h>
 
+// 构造：创建 epoll 与唤醒 fd
 EventLoop::EventLoop(std::size_t max_events)
     : epoll_fd_(-1), wakeup_fd_(-1), quit_(false), looping_(false),
     events_(max_events == 0 ? 1 : max_events), owner_thread_id_(std::this_thread::get_id())
@@ -32,6 +33,7 @@ EventLoop::EventLoop(std::size_t max_events)
     }
 }
 
+// 唤醒 epoll 等待
 void EventLoop::wakeup()
 {
     if (wakeup_fd_ == -1)
@@ -50,6 +52,7 @@ void EventLoop::wakeup()
     }
 }
 
+// 处理唤醒事件
 void EventLoop::handle_wakeup(uint32_t events)
 {
     if (!(events & EPOLLIN))
@@ -74,6 +77,7 @@ void EventLoop::handle_wakeup(uint32_t events)
     }
 }
 
+// 析构：关闭 fd
 EventLoop::~EventLoop()
 {
     if (wakeup_fd_ != -1)
@@ -88,6 +92,7 @@ EventLoop::~EventLoop()
     }
 }
 
+// 投递任务到 loop 线程
 void EventLoop::queue_in_loop(Functor functor)
 {
     if (!functor)
@@ -103,6 +108,7 @@ void EventLoop::queue_in_loop(Functor functor)
     wakeup();
 }
 
+// 执行队列中的任务
 void EventLoop::do_pending_functors()
 {
     std::vector<Functor> functors;
@@ -114,6 +120,7 @@ void EventLoop::do_pending_functors()
         functor();
 }
 
+// 在 loop 线程执行（已在则直接执行）
 void EventLoop::run_in_loop(Functor functor)
 {
     if (!functor)
@@ -130,16 +137,19 @@ void EventLoop::run_in_loop(Functor functor)
     }
 }
 
+// 查询：fd 是否有效
 bool EventLoop::valid() const
 {
     return epoll_fd_ != -1 && wakeup_fd_ != -1;
 }
 
+// 当前是否 loop 线程
 bool EventLoop::is_in_loop_thread() const
 {
     return owner_thread_id_ == std::this_thread::get_id();
 }
 
+// 注册 fd 到 epoll
 bool EventLoop::add_fd(int fd, uint32_t events, EventCallback callback)
 {
     if (!valid() || fd < 0 || !callback)
@@ -165,6 +175,7 @@ bool EventLoop::add_fd(int fd, uint32_t events, EventCallback callback)
     return true;
 }
 
+// 修改 fd 监听事件
 bool EventLoop::update_fd(int fd, uint32_t events)
 {
     if (!valid() || fd < 0)
@@ -189,6 +200,7 @@ bool EventLoop::update_fd(int fd, uint32_t events)
     return true;
 }
 
+// 从 epoll 注销 fd
 bool EventLoop::remove_fd(int fd)
 {
     if (!valid() || fd < 0)
@@ -212,6 +224,7 @@ bool EventLoop::remove_fd(int fd)
     return true;
 }
 
+// 进入事件循环（阻塞）
 bool EventLoop::loop()
 {
     if (!valid())
@@ -262,6 +275,7 @@ bool EventLoop::loop()
     return true;
 }
 
+// 退出事件循环
 void EventLoop::quit()
 {
     quit_.store(true);

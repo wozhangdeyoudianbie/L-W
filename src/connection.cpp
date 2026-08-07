@@ -7,22 +7,26 @@
 #include "event_loop.h"
 #include <sys/epoll.h>
 
+// 构造：连接状态机初始化
 Connection::Connection(EventLoop *loop, int fd)
     :loop_(loop), fd_(fd), state_(State::Connecting), registered_(false),
     close_(false), last_active_(std::time(nullptr)), peer_eof_(false)
 {
 }
 
+// 析构：关闭连接
 Connection::~Connection()
 {
     close_connection();
 }
 
+// 查询：所属事件循环
 EventLoop *Connection::loop() const
 {
     return loop_;
 }
 
+// 注册 fd 到事件循环
 void Connection::connect_established()
 {
     if (!loop_ || !loop_->is_in_loop_thread())
@@ -60,6 +64,7 @@ void Connection::connect_established()
     handle_close();
 }
 
+// 注销 fd 并关闭
 void Connection::connect_destroyed()
 {
     if (!loop_ || !loop_->is_in_loop_thread())
@@ -79,6 +84,7 @@ void Connection::connect_destroyed()
     state_ = State::Disconnected;
 }
 
+// 关闭流程：通知上层
 void Connection::handle_close()
 {
     if (!loop_ || !loop_->is_in_loop_thread())
@@ -96,6 +102,7 @@ void Connection::handle_close()
     }
 }
 
+// 事件入口：读/写分发
 void Connection::handle_event(uint32_t events)
 {
     if (!loop_ || !loop_->is_in_loop_thread())
@@ -150,6 +157,7 @@ void Connection::handle_event(uint32_t events)
     }
 }
 
+// 线程安全发送
 void Connection::send(std::string data)
 {
     if (!loop_ || data.empty())
@@ -163,6 +171,7 @@ void Connection::send(std::string data)
     });
 }
 
+// 在 loop 线程执行发送
 void Connection::send_in_loop(std::string data)
 {
     if (!loop_ || !loop_->is_in_loop_thread())
@@ -191,61 +200,73 @@ void Connection::send_in_loop(std::string data)
     }
 }
 
+// 设置关闭回调
 void Connection::set_close_callback(CloseCallback callback)
 {
     close_callback_ = std::move(callback);
 }
 
+// 设置消息回调
 void Connection::set_message_callback(MessageCallback callback)
 {
     message_callback_ = std::move(callback);
 }
 
+// 查询：文件描述符
 int Connection::fd() const
 {
     return fd_;
 }
 
+// 查询：是否已关闭
 bool Connection::close() const
 {
     return close_;
 }
 
+// 查询：最近活跃时间
 time_t Connection::last_active() const
 {
     return last_active_;
 }
 
+// 读缓冲区
 Buffer &Connection::read_buffer()
 {
     return read_buffer_;
 }
 
+// 读缓冲区（只读）
 const Buffer &Connection::read_buffer() const
 {
     return read_buffer_;
 }
 
+// 写缓冲区（只读）
 const Buffer &Connection::write_buffer() const
 {
     return write_buffer_;
 }
 
+// 查询：对端关闭
 bool Connection::peer_eof() const
 {
     return peer_eof_;
 }
 
+// 追加待发送数据（字符串）
 void Connection::append_write_buffer(const std::string &data)
 {
     write_buffer_.append(data);
 }
 
+// 追加待发送数据（原始字节）
 void Connection::append_write_buffer(const char *data, std::size_t len)
 {
     write_buffer_.append(data, len);
 }
 
+// 读 socket 到缓冲区
 bool Connection::read_from_socket()
 {
     char buffer[4096];
@@ -277,6 +298,7 @@ bool Connection::read_from_socket()
     }
 }
 
+// 写缓冲区到 socket
 bool Connection::write_to_socket()
 {
     while (!write_buffer_.empty())
@@ -312,6 +334,7 @@ bool Connection::write_to_socket()
     return true;
 }
 
+// 关闭底层 fd
 void Connection::close_connection()
 {
     if (!close_)

@@ -18,6 +18,7 @@ SRC = main/server.cpp \
 	  src/room_service.cpp \
 	  src/room_state_machine.cpp \
   	  src/game_state.cpp \
+	  src/tick_timer.cpp
 
 ROOM_STATE_MACHINE_TEST_TARGET = build/room_state_machine_test
 ROOM_STATE_MACHINE_TEST_SRC = tests/room_state_machine_test.cpp \
@@ -26,6 +27,19 @@ ROOM_STATE_MACHINE_TEST_SRC = tests/room_state_machine_test.cpp \
 GAME_STATE_TEST_TARGET = build/game_state_test
 GAME_STATE_TEST_SRC = tests/game_state_test.cpp \
                       src/game_state.cpp
+
+TICK_TEST_TARGET = build/tick_test
+TICK_TEST_SRC = tests/tick_test.cpp \
+                src/logger.cpp \
+                src/buffer.cpp \
+                src/event_loop.cpp \
+                src/connection.cpp \
+                src/protocol.cpp \
+                src/room_state_machine.cpp \
+                src/game_state.cpp \
+                src/room.cpp \
+                src/room_manager.cpp \
+                src/tick_timer.cpp
 
 BUFFER_TEST_TARGET = build/buffer_test
 BUFFER_TEST_SRC = tests/buffer_test.cpp \
@@ -200,6 +214,10 @@ $(GAME_STATE_TEST_TARGET): $(GAME_STATE_TEST_SRC)
 	mkdir -p build
 	$(CXX) $(GAME_STATE_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(GAME_STATE_TEST_TARGET)
 
+$(TICK_TEST_TARGET): $(TICK_TEST_SRC)
+	mkdir -p build
+	$(CXX) $(TICK_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(TICK_TEST_TARGET)
+
 run: all
 	./$(TARGET)
 
@@ -247,6 +265,9 @@ test-room-state-machine: $(ROOM_STATE_MACHINE_TEST_TARGET)
 test-game-state: $(GAME_STATE_TEST_TARGET)
 	./$(GAME_STATE_TEST_TARGET)
 
+test-tick: $(TICK_TEST_TARGET)
+	./$(TICK_TEST_TARGET)
+
 test-all: test-buffer \
           test-event-loop \
           test-event-loop-thread \
@@ -261,7 +282,8 @@ test-all: test-buffer \
 		  test-tcp-server-closed-callback \
 		  test-room-service \
           test-room-state-machine \
-          test-game-state
+          test-game-state \
+          test-tick
 
 slow-echo-client: $(SLOW_ECHO_CLIENT_TARGET)
 
@@ -288,3 +310,4 @@ clean:
 		test-room-service \
 		test-room-state-machine \
 		test-game-state \
+		test-tick \

@@ -3,12 +3,14 @@
 #include <iomanip>
 #include <sstream>
 
+// 单例实例
 Logger &Logger::get_instance()
 {
     static Logger instance;
     return instance;
 }
 
+// 打开日志文件
 bool Logger::init(const string &file_name)
 {
     unique_lock<mutex> lock(mtx);
@@ -16,6 +18,7 @@ bool Logger::init(const string &file_name)
     return log_file.is_open();
 }
 
+// 当前时间字符串
 string Logger::get_current_time()
 {
     auto now = chrono::system_clock::now();
@@ -31,6 +34,7 @@ string Logger::get_current_time()
     return ss.str();
 }
 
+// 写一条日志
 void Logger::write_log(const string &level, const string &message)
 {
     unique_lock<mutex> lock(mtx);
@@ -43,6 +47,7 @@ void Logger::write_log(const string &level, const string &message)
         << message << endl;
 }
 
+// 刷新到磁盘
 void Logger::flush()
 {
     unique_lock<mutex> lock(mtx);

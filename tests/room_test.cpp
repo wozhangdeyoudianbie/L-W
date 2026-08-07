@@ -49,7 +49,7 @@ namespace
         }
 
         Room::JoinResult result_a = room.join(connection_a, "alice");
-        if (!expect(result_a.status == Room::JoinStatus::success, "A join status"))
+        if (!expect(result_a.state == Room::Joinstates::success, "A join status"))
         {
             return false;
         }
@@ -59,7 +59,7 @@ namespace
         }
 
         Room::JoinResult result_b = room.join(connection_b, "bob");
-        if (!expect(result_b.status == Room::JoinStatus::success, "B join status"))
+        if (!expect(result_b.state == Room::Joinstates::success, "B join status"))
         {
             return false;
         }
@@ -103,20 +103,20 @@ namespace
         }
 
         Room::JoinResult null_result = room.join(nullptr, "null");
-        if (!expect(null_result.status == Room::JoinStatus::invalid_connection, "null connection"))
+        if (!expect(null_result.state == Room::Joinstates::invalid_connection, "null connection"))
         {
             return false;
         }
 
         Room::JoinResult empty_name = room.join(connection_b, "");
-        if (!expect(empty_name.status == Room::JoinStatus::invalid_player_name, "empty name"))
+        if (!expect(empty_name.state == Room::Joinstates::invalid_player_name, "empty name"))
         {
             return false;
         }
 
         std::string long_name(Protocol::MAX_PLAYER_NAME_SIZE + 1, 'x');
         Room::JoinResult oversized_name = room.join(connection_b, long_name);
-        if (!expect(oversized_name.status == Room::JoinStatus::invalid_player_name, "oversized name"))
+        if (!expect(oversized_name.state == Room::Joinstates::invalid_player_name, "oversized name"))
         {
             return false;
         }
@@ -133,7 +133,7 @@ namespace
         }
 
         Room::JoinResult full_result = room.join(connection_c, "carol");
-        if (!expect(full_result.status == Room::JoinStatus::room_full, "room full"))
+        if (!expect(full_result.state == Room::Joinstates::room_full, "room full"))
         {
             return false;
         }
@@ -170,7 +170,7 @@ namespace
         Room::JoinResult result_a = room.join(connection_a, binary_name);
         Room::JoinResult result_b = room.join(connection_b, "bob");
 
-        if (!expect(result_a.status == Room::JoinStatus::success, "binary name"))
+        if (!expect(result_a.state == Room::Joinstates::success, "binary name"))
         {
             return false;
         }
@@ -211,7 +211,7 @@ namespace
         }
 
         Room::JoinResult result_a = room.join(connection_a, "alice");
-        if (!expect(result_a.status == Room::JoinStatus::success, "join before start"))
+        if (!expect(result_a.state == Room::Joinstates::success, "join before start"))
         {
             return false;
         }
@@ -235,7 +235,7 @@ namespace
         }
 
         Room::JoinResult blocked_running = room.join(connection_b, "bob");
-        if (!expect(blocked_running.status == Room::JoinStatus::invalid_state, "running room rejects join"))
+        if (!expect(blocked_running.state == Room::Joinstates::invalid_state, "running room rejects join"))
         {
             return false;
         }
@@ -272,7 +272,7 @@ namespace
         }
 
         Room::JoinResult blocked_finished = room.join(connection_b, "bob");
-        if (!expect(blocked_finished.status == Room::JoinStatus::invalid_state, "finished room rejects join"))
+        if (!expect(blocked_finished.state == Room::Joinstates::invalid_state, "finished room rejects join"))
         {
             return false;
         }

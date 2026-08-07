@@ -158,7 +158,7 @@ namespace
         std::vector<PlayerGameState> before = game.snapshot();
 
         Gamestate::Attackresult result = game.attack_player(0, 2);
-        CHECK(result.status == Gamestate::States::invalid_player_id);
+        CHECK(result.state == Gamestate::States::invalid_player_id);
         CHECK(result.attacker_id == 0);
         CHECK(result.target_player_id == 2);
         CHECK(result.remaining_hp == 0);
@@ -166,7 +166,7 @@ namespace
         CHECK(same_snapshot(before, game.snapshot()));
 
         result = game.attack_player(1, 0);
-        CHECK(result.status == Gamestate::States::invalid_player_id);
+        CHECK(result.state == Gamestate::States::invalid_player_id);
         CHECK(result.attacker_id == 1);
         CHECK(result.target_player_id == 0);
         CHECK(result.remaining_hp == 0);
@@ -174,19 +174,19 @@ namespace
         CHECK(same_snapshot(before, game.snapshot()));
 
         result = game.attack_player(1, 1);
-        CHECK(result.status == Gamestate::States::invalid_target);
+        CHECK(result.state == Gamestate::States::invalid_target);
         CHECK(result.remaining_hp == 0);
         CHECK(!result.target_eliminated);
         CHECK(same_snapshot(before, game.snapshot()));
 
         result = game.attack_player(9, 2);
-        CHECK(result.status == Gamestate::States::attacker_not_found);
+        CHECK(result.state == Gamestate::States::attacker_not_found);
         CHECK(result.remaining_hp == 0);
         CHECK(!result.target_eliminated);
         CHECK(same_snapshot(before, game.snapshot()));
 
         result = game.attack_player(1, 9);
-        CHECK(result.status == Gamestate::States::target_not_found);
+        CHECK(result.state == Gamestate::States::target_not_found);
         CHECK(result.remaining_hp == 0);
         CHECK(!result.target_eliminated);
         CHECK(same_snapshot(before, game.snapshot()));
@@ -203,7 +203,7 @@ namespace
         std::vector<PlayerGameState> before = game.snapshot();
         Gamestate::Attackresult result = game.attack_player(1, 2);
 
-        CHECK(result.status == Gamestate::States::target_out_of_range);
+        CHECK(result.state == Gamestate::States::target_out_of_range);
         CHECK(result.attacker_id == 1);
         CHECK(result.target_player_id == 2);
         CHECK(result.remaining_hp == 0);
@@ -222,7 +222,7 @@ namespace
 
         Gamestate::Attackresult result = game.attack_player(10, 20);
 
-        CHECK(result.status == Gamestate::States::success);
+        CHECK(result.state == Gamestate::States::success);
         CHECK(result.attacker_id == 10);
         CHECK(result.target_player_id == 20);
         CHECK(result.remaining_hp == 90);
@@ -248,14 +248,14 @@ namespace
         {
             Gamestate::Attackresult result = game.attack_player(1, 2);
 
-            CHECK(result.status == Gamestate::States::success);
+            CHECK(result.state == Gamestate::States::success);
             CHECK(result.remaining_hp == 100 - hit * 10);
             CHECK(!result.target_eliminated);
         }
 
         Gamestate::Attackresult lethal_result = game.attack_player(1, 2);
 
-        CHECK(lethal_result.status == Gamestate::States::success);
+        CHECK(lethal_result.state == Gamestate::States::success);
         CHECK(lethal_result.remaining_hp == 0);
         CHECK(lethal_result.target_eliminated);
         CHECK(game.player_state(2, target));
@@ -264,7 +264,7 @@ namespace
         std::vector<PlayerGameState> after_death = game.snapshot();
         Gamestate::Attackresult repeated_result = game.attack_player(1, 2);
 
-        CHECK(repeated_result.status == Gamestate::States::target_dead);
+        CHECK(repeated_result.state == Gamestate::States::target_dead);
         CHECK(repeated_result.remaining_hp == 0);
         CHECK(!repeated_result.target_eliminated);
         CHECK(same_snapshot(after_death, game.snapshot()));
@@ -281,13 +281,13 @@ namespace
         for (int hit = 0; hit < 10; ++hit)
         {
             Gamestate::Attackresult result = game.attack_player(2, 1);
-            CHECK(result.status == Gamestate::States::success);
+            CHECK(result.state == Gamestate::States::success);
         }
 
         std::vector<PlayerGameState> before = game.snapshot();
         Gamestate::Attackresult result = game.attack_player(1, 2);
 
-        CHECK(result.status == Gamestate::States::attacker_dead);
+        CHECK(result.state == Gamestate::States::attacker_dead);
         CHECK(result.remaining_hp == 0);
         CHECK(!result.target_eliminated);
         CHECK(same_snapshot(before, game.snapshot()));
@@ -306,7 +306,7 @@ namespace
 
         Gamestate::Attackresult result = game.attack_player(1, 2);
 
-        CHECK(result.status == Gamestate::States::success);
+        CHECK(result.state == Gamestate::States::success);
         CHECK(result.remaining_hp == 90);
         CHECK(!result.target_eliminated);
         return true;
@@ -319,7 +319,7 @@ namespace
             Gamestate game;
 
             CHECK(game.initialize({1, 2}) == Gamestate::States::success);
-            CHECK(game.attack_player(1, 2).status == Gamestate::States::success);
+            CHECK(game.attack_player(1, 2).state == Gamestate::States::success);
             CHECK(game.player_count() == 2);
         }
         return true;

@@ -2,15 +2,18 @@
 #include<algorithm>
 #include<cstdlib>
 
+// 构造：空权威状态
 Gamestate::Gamestate()
 {
 }
 
+// 查询：玩家数
 std::size_t Gamestate::player_count() const
 {
     return players_.size();
 }
 
+// 查询：玩家是否存在
 bool Gamestate::contains(std::uint64_t player_id) const
 {
     auto it = players_.find(player_id);
@@ -21,6 +24,7 @@ bool Gamestate::contains(std::uint64_t player_id) const
     return true;
 }
 
+// 初始化：用玩家列表建状态（失败不改原状态）
 Gamestate::States Gamestate::initialize(const std::vector<std::uint64_t> &player_ids)
 {
     if (player_ids.empty())
@@ -59,6 +63,7 @@ Gamestate::States Gamestate::initialize(const std::vector<std::uint64_t> &player
     return States::success;
 }
 
+// 删除玩家
 Gamestate::States Gamestate::remove_player(std::uint64_t player_id)
 {
     if (player_id == 0)
@@ -73,6 +78,7 @@ Gamestate::States Gamestate::remove_player(std::uint64_t player_id)
     return States::success;
 }
 
+// 玩家移动一格（上下左右）
 Gamestate::States Gamestate::move_player(std::uint64_t player_id, std::int32_t dx, std::int32_t dy)
 {
     if (player_id == 0)
@@ -101,6 +107,7 @@ Gamestate::States Gamestate::move_player(std::uint64_t player_id, std::int32_t d
     return States::success;
 }
 
+// 查询单个玩家状态
 bool Gamestate::player_state(std::uint64_t player_id, PlayerGameState &state) const
 {
     auto it = players_.find(player_id);
@@ -112,6 +119,7 @@ bool Gamestate::player_state(std::uint64_t player_id, PlayerGameState &state) co
     return true;
 }
 
+// 全部玩家快照（按 id 排序）
 std::vector<PlayerGameState> Gamestate::snapshot() const
 {
     std::vector<PlayerGameState> snapshot_;
@@ -127,6 +135,7 @@ std::vector<PlayerGameState> Gamestate::snapshot() const
     return snapshot_;
 }
 
+// 攻击：扣目标 10 点血
 Gamestate::Attackresult Gamestate::attack_player(std::uint64_t attacker_id, std::uint64_t target_player_id)
 {
     Attackresult result

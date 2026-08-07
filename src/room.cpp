@@ -1,30 +1,36 @@
 #include "room.h"
 
+// 构造：创建房间
 Room::Room(std::uint32_t room_id, std::size_t capacity)
     :room_id_(room_id), capacity_(capacity), next_player_id_(1), tick_id_(0)
 {
 }
 
+// 查询：房间号
 std::uint32_t Room::id() const
 {
     return room_id_;
 }
 
+// 查询：容量
 std::size_t Room::capacity() const
 {
     return capacity_;
 }
 
+// 查询：当前人数
 std::size_t Room::member_count() const
 {
     return members_.size();
 }
 
+// 查询：房间状态（等待/进行中/已结束）
 Roomstatemachine::States Room::state() const
 {
     return state_machine_.state();
 }
 
+// 开局：初始化权威状态（仅 waiting 态）
 Roomstatemachine::Transitionstates Room::start(bool ready_to_start)
 {
     if (state_machine_.state() != Roomstatemachine::States::waiting)
@@ -53,6 +59,7 @@ Roomstatemachine::Transitionstates Room::start(bool ready_to_start)
     return Roomstatemachine::Transitionstates::success;
 }
 
+// 结束对局：仅 running 态
 Roomstatemachine::Transitionstates Room::finish(bool should_finish)
 {
     if (state_machine_.state() != Roomstatemachine::States::running)
@@ -71,21 +78,25 @@ Roomstatemachine::Transitionstates Room::finish(bool should_finish)
     return Roomstatemachine::Transitionstates::success;
 }
 
+// 查询：当前结算编号
 std::uint64_t Room::tick_id() const
 {
     return tick_id_;
 }
 
+// 查询：待结算的命令数
 std::size_t Room::pending_command_count() const
 {
     return pending_commands_.size();
 }
 
+// 查询：权威状态快照（按玩家 id 排序）
 std::vector<PlayerGameState> Room::game_snapshot() const
 {
     return game_state_.snapshot();
 }
 
+// 查询：玩家是否在房间成员表中
 bool Room::contains(std::uint64_t player_id) const
 {
     if (members_.find(player_id) == members_.end())
@@ -95,6 +106,7 @@ bool Room::contains(std::uint64_t player_id) const
     return true;
 }
 
+// 加入：校验后登记成员并分配玩家 id
 Room::JoinResult Room::join(const Connection::ConnectionPtr &connection, const std::string &player_name)
 {
     JoinResult temp_;
@@ -147,6 +159,7 @@ Room::JoinResult Room::join(const Connection::ConnectionPtr &connection, const s
     return temp_;
 }
 
+// 离开：删除成员（运行中同步删权威状态）
 bool Room::leave(std::uint64_t player_id)
 {
     auto it = members_.find(player_id);
@@ -165,6 +178,7 @@ bool Room::leave(std::uint64_t player_id)
     return true;
 }
 
+// 查询：房间内其他玩家连接（用于广播）
 std::vector<Connection::ConnectionPtr> Room::connections(std::uint64_t excluded_player_id) const
 {
     std::vector<Connection::ConnectionPtr> conns;
@@ -184,6 +198,7 @@ std::vector<Connection::ConnectionPtr> Room::connections(std::uint64_t excluded_
     return conns;
 }
 
+// 检查：该玩家本帧是否已提交过命令
 bool Room::has_pending_command(std::uint64_t player_id) const
 {
     auto it = std::find_if(pending_commands_.begin(), pending_commands_.end(), [player_id](const Gamecommand &command)
@@ -196,6 +211,7 @@ bool Room::has_pending_command(std::uint64_t player_id) const
     return it != pending_commands_.end();
 }
 
+// 提交移动命令：入队待结算（仅 running 态）
 Room::Commandstates Room::submit_move(std::uint64_t player_id, std::int32_t dx, std::int32_t dy)
 {
     if (state_machine_.state() != Roomstatemachine::States::running)
@@ -214,6 +230,7 @@ Room::Commandstates Room::submit_move(std::uint64_t player_id, std::int32_t dx, 
     return Commandstates::success;
 }
 
+// 提交攻击命令：入队待结算（仅 running 态）
 Room::Commandstates Room::submit_attack(std::uint64_t player_id, std::uint64_t target_player_id)
 {
     if (state_machine_.state() != Roomstatemachine::States::running)
@@ -232,6 +249,7 @@ Room::Commandstates Room::submit_attack(std::uint64_t player_id, std::uint64_t t
     return Commandstates::success;
 }
 
+// 取走并清空待结算命令（swap，O(1)）
 std::vector<Gamecommand> Room::take_pending_commands()
 {
     std::vector<Gamecommand> temp_;
@@ -239,17 +257,20 @@ std::vector<Gamecommand> Room::take_pending_commands()
     return temp_;
 }
 
+// 执行一条移动命令：交给权威状态
 bool Room::process_command(const Movecommand &command)
 {
     return game_state_.move_player(command.player_id, command.dx, command.dy) == Gamestate::States::success;
 }
 
+// 执行一条攻击命令：交给权威状态
 bool Room::process_command(const Attackcommand &command)
 {
     const Gamestate::Attackresult result = game_state_.attack_player(command.player_id, command.target_player_id);
     return result.state == Gamestate::States::success;
 }
 
+// 结算一帧：执行本批命令并推进 tick 编号
 Room::TickResult Room::tick()
 {
     if (state_machine_.state() != Roomstatemachine::States::running)

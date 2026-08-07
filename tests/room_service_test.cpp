@@ -473,7 +473,7 @@ namespace
 
         REQUIRE(Protocol::encode_error(
             MessageType::join,
-            ErrorCode::room_full,
+            ErrorCode::room_not_joinable,
             payload));
 
         REQUIRE(expect_frames(
@@ -519,15 +519,14 @@ namespace
             MessageType::join,
             make_join_payload(7, "Bob")));
 
-        REQUIRE(Protocol::encode_join_ok(
-            7,
-            2,
-            members,
+        REQUIRE(Protocol::encode_error(
+            MessageType::join,
+            ErrorCode::room_not_joinable,
             payload));
 
         REQUIRE(expect_frames(
             bob,
-            {expected_frame(MessageType::join_ok, payload)}));
+            {expected_frame(MessageType::error, payload)}));
 
         REQUIRE(expect_frames(alice, {}));
 

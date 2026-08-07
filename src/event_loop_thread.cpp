@@ -5,6 +5,7 @@ EventLoopThread::EventLoopThread()
 {
 }
 
+// 启动线程，返回其 EventLoop
 EventLoop *EventLoopThread::start_loop()
 {
     if (started_ == true)
@@ -29,6 +30,7 @@ EventLoop *EventLoopThread::start_loop()
     return result;
 }
 
+// 线程入口：创建 loop 并运行
 void EventLoopThread::thread_func()
 {
     EventLoop loop;
@@ -53,6 +55,7 @@ void EventLoopThread::thread_func()
     }
 }
 
+// 析构：退出并回收线程
 EventLoopThread::~EventLoopThread()
 {
     {
