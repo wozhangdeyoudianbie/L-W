@@ -112,6 +112,30 @@ bool TcpServer::started() const
     return started_;
 }
 
+void TcpServer::check_timeouts(std::chrono::milliseconds timeout)
+{
+    if (!base_loop_ || !base_loop_->is_in_loop_thread())
+    {
+        return;
+    }
+    if (!started_)
+    {
+        return;
+    }
+    if (timeout.count() <= 0)
+    {
+        return;
+    }
+    for (auto &it : connections_)
+    {
+        Connection::ConnectionPtr connection = it.second;
+        if (connection)
+        {
+            connection->check_timeout(timeout);
+        }
+    }
+}
+
 // 接受新连接并分发到工作线程
 void TcpServer::handle_accept(uint32_t events)
 {

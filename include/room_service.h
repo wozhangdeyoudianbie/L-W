@@ -22,6 +22,8 @@ public:
     void handle_connection_closed(const Connection::ConnectionPtr &connection);
     void handle_tick(std::uint64_t expirations);   // 定时触发：结算所有运行中房间并广播快照
 private:
+    bool handle_decoded_frame(const Connection::ConnectionPtr &connection, std::uint16_t type, const std::string &payload);
+    bool handle_heartbeat(const Connection::ConnectionPtr &connection, const std::string &payload);
     void handle_frame(const Connection::ConnectionPtr &connection, std::uint16_t type, const std::string &payload);
     void handle_frame_in_loop(const Connection::ConnectionPtr &connection, std::uint16_t type, std::string payload);
     void handle_join(const Connection::ConnectionPtr &connection, const std::string &payload);

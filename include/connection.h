@@ -1,7 +1,7 @@
 #ifndef CONNECTION_H
 #define CONNECTION_H
 #include <string>
-#include <ctime>
+#include <chrono>
 #include<buffer.h>
 #include <cstddef>
 #include <functional>
@@ -22,12 +22,13 @@ public:
     void connect_destroyed();                                 // 连接销毁：注销 fd 并关闭
     void set_message_callback(MessageCallback callback);      // 设置消息回调
     void send(std::string data);                              // 线程安全发送（内部投递到 loop 线程）
+    void refresh_peer_activity();                             // 刷新对端活性时间（须在所属 loop 线程）
+    void check_timeout(std::chrono::milliseconds timeout);    // 异步请求所属 loop 检查超时
     ~Connection();
     Connection(const Connection &) = delete;
     Connection &operator=(const Connection &) = delete;
     int fd() const;
     bool close() const;
-    time_t last_active() const;
     Buffer &read_buffer();
     const Buffer &read_buffer() const;
     const Buffer &write_buffer() const;
@@ -39,6 +40,7 @@ public:
     void close_connection();      // 关闭底层 fd
     EventLoop *loop() const;
 private:
+    using Clock = std::chrono::steady_clock;
     enum class State
     {
         Connecting,
@@ -53,11 +55,12 @@ private:
     bool close_;
     Buffer read_buffer_;
     Buffer write_buffer_;
-    time_t last_active_;
+    Clock::time_point last_peer_activity_time_;
     bool peer_eof_;
     void handle_event(uint32_t events);
     void handle_close();
     void send_in_loop(std::string data);
+    void check_timeout_in_loop(std::chrono::milliseconds timeout);
     MessageCallback message_callback_;
     CloseCallback close_callback_;
 };

@@ -14,13 +14,15 @@ enum class MessageType : std::uint16_t
     chat = 3,
     move = 4,
     attack = 5,
+    heartbeat = 6,
     join_ok = 101,
     player_joined = 102,
     leave_ok = 103,
     player_left = 104,
     chat_event = 105,
     state_snapshot = 106,
-    error = 107
+    error = 107,
+    heartbeat_ack = 108
 };
 
 enum class ErrorCode : std::uint16_t
@@ -59,6 +61,11 @@ struct AttackRequest
     std::uint64_t target_player_id;
 };
 
+struct HeartbeatRequest
+{
+    std::uint64_t seq;
+};
+
 struct MemberInfo
 {
     std::uint64_t player_id;
@@ -75,6 +82,7 @@ public:
     static bool decode_chat_request(const std::string &payload, ChatRequest &request);
     static bool decode_move_request(const std::string &payload, MoveRequest &request);
     static bool decode_attack_request(const std::string &payload, AttackRequest &request);
+    static bool decode_heartbeat_request(const std::string &payload, HeartbeatRequest &request);
     static bool encode_join_ok(std::uint32_t room_id, std::uint64_t self_player_id, const std::vector<MemberInfo> &members, std::string &payload);
     static bool encode_player_joined(std::uint32_t room_id, std::uint64_t player_id, const std::string &player_name, std::string &payload);
     static bool encode_leave_ok(std::uint32_t room_id, std::string &payload);
@@ -82,6 +90,7 @@ public:
     static bool encode_chat_event(std::uint32_t room_id, std::uint64_t player_id, const std::string &message, std::string &payload);
     static bool encode_state_snapshot(std::uint32_t room_id, std::uint64_t tick_id, const std::vector<PlayerGameState> &states, std::string &payload);
     static bool encode_error(MessageType request_type, ErrorCode error_code, std::string &payload);
+    static bool encode_heartbeat_ack(std::uint64_t seq, std::string &payload);
 };
 
 #endif

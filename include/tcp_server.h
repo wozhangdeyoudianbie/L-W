@@ -4,6 +4,7 @@
 #include "connection.h"
 #include "event_loop.h"
 #include "event_loop_thread_pool.h"
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -18,10 +19,11 @@ public:
     ~TcpServer();
     TcpServer(const TcpServer &) = delete;
     TcpServer &operator=(const TcpServer &) = delete;
-    void set_message_callback(Connection::MessageCallback callback);            // 设置消息处理回调
+    void set_message_callback(Connection::MessageCallback callback);             // 设置消息处理回调
     void set_connection_closed_callback(ConnectionClosedCallback callback);      // 设置连接关闭回调
     bool start();       // 监听端口并启动线程池
     bool started() const;
+    void check_timeouts(std::chrono::milliseconds timeout);      // base 线程遍历连接并请求超时检查
 private:
     bool create_listen_socket();
     void close_listen_socket();

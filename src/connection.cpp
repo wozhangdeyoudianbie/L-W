@@ -10,7 +10,7 @@
 // 构造：连接状态机初始化
 Connection::Connection(EventLoop *loop, int fd)
     :loop_(loop), fd_(fd), state_(State::Connecting), registered_(false),
-    close_(false), last_active_(std::time(nullptr)), peer_eof_(false)
+    close_(false), last_peer_activity_time_(Clock::now()), peer_eof_(false)
 {
 }
 
@@ -18,6 +18,55 @@ Connection::Connection(EventLoop *loop, int fd)
 Connection::~Connection()
 {
     close_connection();
+}
+
+//重新刷新活性时间
+void Connection::refresh_peer_activity()
+{
+    if (!loop_ || !loop_->is_in_loop_thread())
+    {
+        return;
+    }
+    if (state_ != State::Connected)
+    {
+        return;
+    }
+    last_peer_activity_time_ = Clock::now();
+}
+
+// 异步请求所属 loop 检查超时（任意线程可调用）
+void Connection::check_timeout(std::chrono::milliseconds timeout)
+{
+    if (!loop_ || timeout.count() <= 0)
+    {
+        return;
+    }
+    std::shared_ptr<Connection> connection = weak_from_this().lock();
+    if (!connection)
+    {
+        return;
+    }
+    loop_->queue_in_loop([connection, timeout]()
+    {
+        connection->check_timeout_in_loop(timeout);
+    });
+}
+
+// 在 loop 线程检查超时：超过阈值未刷新活性则走关闭流程
+void Connection::check_timeout_in_loop(std::chrono::milliseconds timeout)
+{
+    if (!loop_ || !loop_->is_in_loop_thread())
+    {
+        return;
+    }
+    if (state_ != State::Connected)
+    {
+        return;
+    }
+    if (Clock::now() - last_peer_activity_time_ >= timeout)
+    {
+        handle_close();
+    }
 }
 
 // 查询：所属事件循环
@@ -224,12 +273,6 @@ bool Connection::close() const
     return close_;
 }
 
-// 查询：最近活跃时间
-time_t Connection::last_active() const
-{
-    return last_active_;
-}
-
 // 读缓冲区
 Buffer &Connection::read_buffer()
 {
@@ -276,7 +319,6 @@ bool Connection::read_from_socket()
         if (n > 0)
         {
             read_buffer_.append(buffer, n);
-            last_active_ = std::time(nullptr);
         }
         else if (n == 0)
         {
@@ -307,7 +349,6 @@ bool Connection::write_to_socket()
         if (n > 0)
         {
             write_buffer_.retrieve(n);
-            last_active_ = std::time(nullptr);
         }
         else if (n == 0)
         {
