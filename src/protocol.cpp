@@ -294,6 +294,33 @@ bool Protocol::encode_error(MessageType request_type, ErrorCode error_code, std:
     return true;
 }
 
+bool Protocol::decode_heartbeat_request(const std::string &payload, HeartbeatRequest &request)
+{
+    if (payload.size() != 8)
+    {
+        return false;
+    }
+    std::uint64_t seq = 0;
+    if (!read_u64(payload, 0, seq))
+    {
+        return false;
+    }
+    HeartbeatRequest temp_{};
+    temp_.seq = seq;
+    request = std::move(temp_);
+    return true;
+}
+
+
+bool Protocol::encode_heartbeat_ack(std::uint64_t seq, std::string &payload)
+{
+    payload.clear();
+    std::string temp_;
+    append_u64(temp_, seq);
+    payload = std::move(temp_);
+    return true;
+}
+
 // 编码状态快照（房间+帧号+玩家状态）
 bool Protocol::encode_state_snapshot(std::uint32_t room_id, std::uint64_t tick_id, const std::vector<PlayerGameState> &states, std::string &payload)
 {

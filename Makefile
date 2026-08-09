@@ -134,6 +134,11 @@ ROOM_SERVICE_TEST_SRC = tests/room_service_test.cpp \
 SLOW_ECHO_CLIENT_TARGET = build/slow_echo_client
 SLOW_ECHO_CLIENT_SRC = tests/slow_echo_client.cpp
 
+HEARTBEAT_TIMEOUT_CLIENT_TARGET = build/heartbeat_timeout_client
+HEARTBEAT_TIMEOUT_CLIENT_SRC = tests/heartbeat_timeout_client.cpp \
+                               src/buffer.cpp \
+                               src/codec.cpp
+
 TCP_SERVER_CLOSED_CALLBACK_TEST_TARGET = build/tcp_server_closed_callback_test
 TCP_SERVER_CLOSED_CALLBACK_TEST_SRC = tests/tcp_server_closed_callback_test.cpp \
                                       src/logger.cpp \
@@ -197,6 +202,10 @@ $(ROOM_MANAGER_TEST_TARGET): $(ROOM_MANAGER_TEST_SRC)
 $(SLOW_ECHO_CLIENT_TARGET): $(SLOW_ECHO_CLIENT_SRC)
 	mkdir -p build
 	$(CXX) $(SLOW_ECHO_CLIENT_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(SLOW_ECHO_CLIENT_TARGET)
+
+$(HEARTBEAT_TIMEOUT_CLIENT_TARGET): $(HEARTBEAT_TIMEOUT_CLIENT_SRC)
+	mkdir -p build
+	$(CXX) $(HEARTBEAT_TIMEOUT_CLIENT_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(HEARTBEAT_TIMEOUT_CLIENT_TARGET)
 
 $(TCP_SERVER_CLOSED_CALLBACK_TEST_TARGET): $(TCP_SERVER_CLOSED_CALLBACK_TEST_SRC)
 	mkdir -p build
@@ -268,6 +277,9 @@ test-game-state: $(GAME_STATE_TEST_TARGET)
 test-tick: $(TICK_TEST_TARGET)
 	./$(TICK_TEST_TARGET)
 
+test-heartbeat-timeout: $(HEARTBEAT_TIMEOUT_CLIENT_TARGET)
+	./$(HEARTBEAT_TIMEOUT_CLIENT_TARGET)
+
 test-all: test-buffer \
           test-event-loop \
           test-event-loop-thread \
@@ -311,3 +323,4 @@ clean:
 		test-room-state-machine \
 		test-game-state \
 		test-tick \
+		test-heartbeat-timeout \

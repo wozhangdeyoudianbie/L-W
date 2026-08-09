@@ -99,8 +99,7 @@ bool RoomService::handle_message(const Connection::ConnectionPtr &connection, Bu
     }
     return Codec::decode(buffer, [this, connection](std::uint16_t type, const std::string &payload)
     {
-        handle_frame(connection, type, payload);
-        return true;
+        return handle_decoded_frame(connection, type, payload);
     });
 }
 
@@ -400,4 +399,56 @@ void RoomService::handle_attack(const Connection::ConnectionPtr &connection, con
         }
         return;
     }
+}
+
+// 拆帧回调（I/O 工作线程） 类型合法则投递到 base 线程 非法类型中止拆帧并断开
+bool RoomService::handle_decoded_frame(const Connection::ConnectionPtr &connection, std::uint16_t type, const std::string &payload)
+{
+    if (!connection)
+    {
+        return false;
+    }
+    const MessageType message_type = static_cast<MessageType>(type);
+    switch (message_type)
+    {
+        case MessageType::heartbeat:
+            {
+                return handle_heartbeat(connection, payload);
+            }
+        case MessageType::join:
+        case MessageType::leave:
+        case MessageType::chat:
+        case MessageType::move:
+        case MessageType::attack:
+            {
+                connection->refresh_peer_activity();
+                handle_frame(connection, type, payload);
+                return true;
+            }
+        default:
+            {
+                return false;
+            }
+    }
+}
+
+// 处理心跳请求（I/O 工作线程） 原样回 ack
+bool RoomService::handle_heartbeat(const Connection::ConnectionPtr &connection, const std::string &payload)
+{
+    if (!connection)
+    {
+        return false;
+    }
+    HeartbeatRequest request{};
+    if (!Protocol::decode_heartbeat_request(payload, request))
+    {
+        return false;
+    }
+    connection->refresh_peer_activity();
+    std::string temp_;
+    if (!Protocol::encode_heartbeat_ack(request.seq, temp_))
+    {
+        return false;
+    }
+    return send_frame(connection, MessageType::heartbeat_ack, temp_);
 }

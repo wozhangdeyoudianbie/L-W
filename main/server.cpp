@@ -1,10 +1,10 @@
+#include <chrono>
 #include <iostream>
 #include <signal.h>
 #include "event_loop.h"
 #include "logger.h"
 #include "room_service.h"
 #include "tcp_server.h"
-#include "tick_timer.h"
 #include "tick_timer.h"
 
 using namespace std;
@@ -15,7 +15,9 @@ const int PORT = 8080;
 const int THREAD_COUNT = 4;
 const std::uint32_t DEFAULT_ROOM_ID = 1;
 const std::size_t DEFAULT_ROOM_CAPACITY = 4;
-const std::uint64_t TICK_INTERVAL_MS = 50;    // 定时结算间隔：每秒推进一次游戏状态（可按需调整）
+const std::uint64_t TICK_INTERVAL_MS = 50;                // 每 50ms 推进一次游戏状态
+const std::uint64_t TIMEOUT_SCAN_INTERVAL_MS = 1000;      // 每 1 秒扫描一次连接
+const std::chrono::milliseconds CONNECTION_TIMEOUT(10000); // 10 秒无合法对端活动则超时
 
 int main()
 {
@@ -63,6 +65,16 @@ int main()
     {
         room_service.handle_connection_closed(connection);
     });
+    TickTimer timeout_timer(&base_loop, TIMEOUT_SCAN_INTERVAL_MS, [&server](std::uint64_t)
+    {
+        server.check_timeouts(CONNECTION_TIMEOUT);
+    });
+    if (!timeout_timer.valid())
+    {
+        Logger::get_instance().write_log("ERROR", "连接超时定时器创建失败");
+        Logger::get_instance().flush();
+        return 1;
+    }
     if (!server.start())
     {
         Logger::get_instance().write_log("ERROR", "TcpServer 启动失败");
@@ -76,10 +88,19 @@ int main()
         Logger::get_instance().flush();
         return 1;
     }
-    base_loop.loop();
-    if (!tick_timer.stop())
+    if (!timeout_timer.start())
     {
-        Logger::get_instance().write_log("ERROR", "TickTimer 停止失败");
+        tick_timer.stop();
+        Logger::get_instance().write_log("ERROR", "连接超时定时器启动失败");
+        Logger::get_instance().flush();
+        return 1;
+    }
+    base_loop.loop();
+    const bool timeout_timer_stopped = timeout_timer.stop();
+    const bool tick_timer_stopped = tick_timer.stop();
+    if (!timeout_timer_stopped || !tick_timer_stopped)
+    {
+        Logger::get_instance().write_log("ERROR", "定时器停止失败");
         Logger::get_instance().flush();
         return 1;
     }
