@@ -10,7 +10,7 @@
 // 构造：连接状态机初始化
 Connection::Connection(EventLoop *loop, int fd)
     :loop_(loop), fd_(fd), state_(State::Connecting), registered_(false),
-    close_(false), last_peer_activity_time_(Clock::now()), peer_eof_(false)
+    close_(false), pending_write_bytes_(0), last_peer_activity_time_(Clock::now()), peer_eof_(false)
 {
 }
 
@@ -129,6 +129,7 @@ void Connection::connect_destroyed()
         loop_->remove_fd(fd_);
         registered_ = false;
     }
+    clear_write_buffer_in_loop();
     close_connection();
     state_ = State::Disconnected;
 }
@@ -145,6 +146,7 @@ void Connection::handle_close()
         return;
     }
     state_ = State::Disconnecting;
+    clear_write_buffer_in_loop();
     if (close_callback_)
     {
         close_callback_(shared_from_this());
@@ -206,18 +208,78 @@ void Connection::handle_event(uint32_t events)
     }
 }
 
-// 线程安全发送
-void Connection::send(std::string data)
+bool Connection::reserve_write_bytes(std::size_t len)
 {
-    if (!loop_ || data.empty())
+    if (len == 0)
+    {
+        return false;
+    }
+    std::size_t cur = pending_write_bytes_.load();
+    while (1)
+    {
+        if (cur > WRITE_HARD_LIMIT || len > WRITE_HARD_LIMIT - cur)
+        {
+            return false;
+        }
+        if (pending_write_bytes_.compare_exchange_weak(cur, cur + len))
+        {
+            return true;
+        }
+    }
+}
+
+void Connection::release_write_bytes(std::size_t len)
+{
+    if (len == 0)
     {
         return;
     }
-    auto connection = shared_from_this();
-    loop_->run_in_loop([connection, data]()
+    std::size_t cur = pending_write_bytes_.load();
+    while (1)
     {
-        connection->send_in_loop(data);
+        if (len > cur)
+        {
+            Logger::get_instance().write_log("ERROR", "释放的债务超过总债务, fd = " + std::to_string(fd_));
+            return;
+        }
+        if (pending_write_bytes_.compare_exchange_weak(cur, cur - len))
+        {
+            return;
+        }
+    }
+}
+
+std::size_t Connection::pending_write_bytes() const
+{
+    return pending_write_bytes_.load();
+}
+
+bool Connection::under_backpressure() const
+{
+    return pending_write_bytes_.load() >= WRITE_HIGH_WATER_MARK;
+}
+
+// 线程安全发送
+bool Connection::send(std::string data)
+{
+    if (!loop_ || data.empty())
+    {
+        return false;
+    }
+    auto connection = weak_from_this().lock();
+    if (!connection)
+    {
+        return false;
+    }
+    if (!reserve_write_bytes(data.size()))
+    {
+        return false;
+    }
+    loop_->run_in_loop([connection, data = std::move(data)]() mutable
+    {
+        connection->send_in_loop(std::move(data));
     });
+    return true;
 }
 
 // 在 loop 线程执行发送
@@ -225,10 +287,12 @@ void Connection::send_in_loop(std::string data)
 {
     if (!loop_ || !loop_->is_in_loop_thread())
     {
+        release_write_bytes(data.size());
         return;
     }
     if (state_ != State::Connected || data.empty())
     {
+        release_write_bytes(data.size());
         return;
     }
     write_buffer_.append(data);
@@ -297,18 +361,6 @@ bool Connection::peer_eof() const
     return peer_eof_;
 }
 
-// 追加待发送数据（字符串）
-void Connection::append_write_buffer(const std::string &data)
-{
-    write_buffer_.append(data);
-}
-
-// 追加待发送数据（原始字节）
-void Connection::append_write_buffer(const char *data, std::size_t len)
-{
-    write_buffer_.append(data, len);
-}
-
 // 读 socket 到缓冲区
 bool Connection::read_from_socket()
 {
@@ -343,12 +395,17 @@ bool Connection::read_from_socket()
 // 写缓冲区到 socket
 bool Connection::write_to_socket()
 {
+    if (!loop_ || !loop_->is_in_loop_thread())
+    {
+        return false;
+    }
     while (!write_buffer_.empty())
     {
         ssize_t n = write(fd_, write_buffer_.peek(), write_buffer_.readable_bytes());
         if (n > 0)
         {
             write_buffer_.retrieve(n);
+            release_write_bytes(n);
         }
         else if (n == 0)
         {
@@ -368,11 +425,42 @@ bool Connection::write_to_socket()
                 "，剩余字节 = " + std::to_string(write_buffer_.readable_bytes()));
                 return true;
             }
-            // close_connection();
             return false;
         }
     }
     return true;
+}
+
+void Connection::clear_write_buffer_in_loop()
+{
+    if (!loop_ || !loop_->is_in_loop_thread())
+    {
+        return;
+    }
+    const std::size_t release = write_buffer_.readable_bytes();
+    if (release == 0)
+    {
+        return;
+    }
+    write_buffer_.retrieve_all();
+    release_write_bytes(release);
+}
+
+void Connection::request_close()
+{
+    if (!loop_)
+    {
+        return;
+    }
+    std::shared_ptr<Connection> connection = weak_from_this().lock();
+    if (!connection)
+    {
+        return;
+    }
+    loop_->run_in_loop([connection]()
+    {
+        connection->handle_close();
+    });
 }
 
 // 关闭底层 fd

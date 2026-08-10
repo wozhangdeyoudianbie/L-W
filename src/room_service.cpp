@@ -209,10 +209,7 @@ void RoomService::handle_join(const Connection::ConnectionPtr &connection, const
     {
         return;
     }
-    if (!send_frame(connection, MessageType::join_ok, response_payload))
-    {
-        return;
-    }
+    send_frame(connection, MessageType::join_ok, response_payload);
     std::string event_payload;
     if (!Protocol::encode_player_joined(result.room_id, result.player_id, request.player_name, event_payload))
     {
@@ -244,10 +241,7 @@ void RoomService::handle_leave(const Connection::ConnectionPtr &connection, cons
     {
         return;
     }
-    if (!send_frame(connection, MessageType::leave_ok, response_payload))
-    {
-        return;
-    }
+    send_frame(connection, MessageType::leave_ok, response_payload);
     std::string event_payload;
     if (!Protocol::encode_player_left(result.room_id, result.player_id, event_payload))
     {
@@ -295,7 +289,11 @@ bool RoomService::send_frame(const Connection::ConnectionPtr &connection, Messag
     {
         return false;
     }
-    connection->send(std::move(frame));
+    if (!connection->send(std::move(frame)))
+    {
+        connection->request_close();
+        return false;
+    }
     return true;
 }
 
@@ -307,14 +305,35 @@ bool RoomService::broadcast_frame(const std::vector<Connection::ConnectionPtr> &
     {
         return false;
     }
+    const bool flag = (type == MessageType::state_snapshot);
+    bool ans = true;
     for (const auto &connection : connections)
     {
-        if (connection)
+        if (!connection)
         {
-            connection->send(frame);
+            continue;
+        }
+        if (flag)
+        {
+            if (connection->under_backpressure())
+            {
+                continue;
+            }
+            if (!connection->send(frame))
+            {
+                continue;
+            }
+        }
+        else
+        {
+            if (!connection->send(frame))
+            {
+                connection->request_close();
+                ans = false;
+            }
         }
     }
-    return true;
+    return ans;
 }
 
 // 定时结算：推进所有运行中房间并广播快照
