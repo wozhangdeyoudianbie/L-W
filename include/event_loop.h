@@ -16,8 +16,8 @@ class EventLoop
 public:
     using EventCallback = std::function<void(uint32_t)>;
     using Functor = std::function<void()>;
-    explicit EventLoop(std::size_t max_events = 1024);
-    ~EventLoop();
+    explicit EventLoop(std::size_t max_events = 1024);   // 构造：创建 epoll 与唤醒 fd
+    ~EventLoop();                            // 析构：关闭 fd
     EventLoop(const EventLoop &) = delete;
     EventLoop &operator=(const EventLoop &) = delete;
     bool valid() const;                       // epoll/eventfd 是否创建成功
@@ -39,9 +39,9 @@ private:
     std::thread::id owner_thread_id_;
     std::mutex pending_functors_mutex_;
     std::vector<Functor> pending_functors_;
-    void wakeup();
-    void do_pending_functors();
-    void handle_wakeup(uint32_t events);
+    void wakeup();                          // 唤醒 epoll 等待
+    void do_pending_functors();             // 执行队列中的任务
+    void handle_wakeup(uint32_t events);    // 处理唤醒事件
 };
 
 #endif

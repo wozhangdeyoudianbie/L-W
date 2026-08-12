@@ -57,6 +57,7 @@ void Logger::flush()
     }
 }
 
+// 析构：关闭日志文件
 Logger::~Logger()
 {
     unique_lock<mutex> lock(mtx);

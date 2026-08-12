@@ -71,6 +71,7 @@ namespace
     }
 }
 
+// 构造：保存 base 循环
 RoomService::RoomService(EventLoop *base_loop)
     :base_loop_(base_loop)
 {

@@ -345,6 +345,7 @@ RoomManager::CommandResult RoomManager::attack(const Connection::ConnectionPtr &
     }
 }
 
+// 结算：推进所有运行中房间并汇总结果
 std::vector<RoomManager::TickResult> RoomManager::tick_rooms()
 {
     std::vector<RoomManager::TickResult> results;

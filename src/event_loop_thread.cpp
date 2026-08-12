@@ -1,5 +1,6 @@
 #include"event_loop_thread.h"
 
+// 构造：初始化线程状态
 EventLoopThread::EventLoopThread()
     : loop_(nullptr), started_(false), start_failed_(false)
 {

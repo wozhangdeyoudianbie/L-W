@@ -15,7 +15,7 @@ public:
     EventLoopThread &operator=(const EventLoopThread &) = delete;
     EventLoop *start_loop();   // 启动线程并返回其中的 EventLoop（失败返回 nullptr）
 private:
-    void thread_func();
+    void thread_func();    // 线程入口：创建 loop 并运行
     std::thread thread_;
     EventLoop *loop_;
     std::mutex mutex_;

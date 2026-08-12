@@ -16,7 +16,7 @@ public:
         invalid_state,
         condition_not_met
     };
-    Roomstatemachine();
+    Roomstatemachine();                        // 构造：初始为等待态
     States state() const;                    // 当前状态：等待/进行中/已结束
     bool can_join() const;                   // 是否允许加入（仅 waiting 态）
     Transitionstates start(bool ready_to_start);   // 等待 → 进行中

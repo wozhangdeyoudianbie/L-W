@@ -42,9 +42,9 @@ public:
         std::int32_t remaining_hp;
         bool target_eliminated;
     };
-    Gamestate();
-    std::size_t player_count() const;
-    bool contains(std::uint64_t player_id) const;
+    Gamestate();                                         // 构造：空权威状态
+    std::size_t player_count() const;                    // 查询：玩家数
+    bool contains(std::uint64_t player_id) const;        // 查询：玩家是否存在
     States initialize(const std::vector<std::uint64_t> &player_ids);   // 用玩家列表初始化权威状态（失败不改原状态）
     States remove_player(std::uint64_t player_id);                     // 删除玩家
     States move_player(std::uint64_t player_id, std::int32_t dx, std::int32_t dy);  // 玩家移动一格（上下左右）

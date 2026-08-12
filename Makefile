@@ -4,21 +4,23 @@ LDFLAGS = -pthread
 
 TARGET = build/server
 SRC = main/server.cpp \
-      src/logger.cpp \
-      src/buffer.cpp \
-      src/codec.cpp \
-      src/event_loop.cpp \
-      src/event_loop_thread.cpp \
-      src/event_loop_thread_pool.cpp \
-      src/connection.cpp \
-      src/tcp_server.cpp \
-      src/protocol.cpp \
-      src/room.cpp \
-      src/room_manager.cpp \
-	  src/room_service.cpp \
-	  src/room_state_machine.cpp \
-  	  src/game_state.cpp \
-	  src/tick_timer.cpp
+    src/logger.cpp \
+    src/buffer.cpp \
+    src/codec.cpp \
+    src/event_loop.cpp \
+    src/event_loop_thread.cpp \
+    src/event_loop_thread_pool.cpp \
+    src/connection.cpp \
+    src/tcp_server.cpp \
+    src/protocol.cpp \
+    src/room.cpp \
+    src/room_manager.cpp \
+	src/room_service.cpp \
+	src/room_state_machine.cpp \
+  	src/game_state.cpp \
+	src/tick_timer.cpp \
+	src/session.cpp \
+	src/session_manager.cpp \
 
 ROOM_STATE_MACHINE_TEST_TARGET = build/room_state_machine_test
 ROOM_STATE_MACHINE_TEST_SRC = tests/room_state_machine_test.cpp \

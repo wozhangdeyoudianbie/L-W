@@ -1,6 +1,7 @@
 #include"event_loop_thread_pool.h"
 #include <utility>
 
+// 构造：保存 base 循环与线程数
 EventLoopThreadPool::EventLoopThreadPool(EventLoop *base_loop, std::size_t thread_count)
     :base_loop_(base_loop), thread_count_(thread_count), started_(false), next_(0)
 {

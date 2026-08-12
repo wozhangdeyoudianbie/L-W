@@ -65,17 +65,17 @@ public:
         std::vector<PlayerGameState> snapshot;
         std::vector<Connection::ConnectionPtr> notify_connections;
     };
-    bool add_room(std::uint32_t room_id, std::size_t capacity);
-    std::size_t room_count() const;
-    bool contains_room(std::uint32_t room_id) const;
-    bool contains_connection(const Connection::ConnectionPtr &connection) const;
-    JoinResult join(const Connection::ConnectionPtr &connection, std::uint32_t room_id, const std::string &player_name);
-    LeaveResult leave(const Connection::ConnectionPtr &connection);
-    ChatResult chat(const Connection::ConnectionPtr &connection, const std::string &message) const;
-    CommandResult move(const Connection::ConnectionPtr &connection, std::int32_t dx, std::int32_t dy);
-    CommandResult attack(const Connection::ConnectionPtr &connection, std::uint64_t target_player_id);
-    std::vector<TickResult> tick_rooms();
-    LeaveResult disconnect(const Connection::ConnectionPtr &connection);
+    bool add_room(std::uint32_t room_id, std::size_t capacity);                          // 创建房间
+    std::size_t room_count() const;                                                      // 查询：房间总数
+    bool contains_room(std::uint32_t room_id) const;                                     // 查询：房间是否存在
+    bool contains_connection(const Connection::ConnectionPtr &connection) const;         // 查询：连接是否已在某房间
+    JoinResult join(const Connection::ConnectionPtr &connection, std::uint32_t room_id, const std::string &player_name);   // 加入：校验后登记成员关系
+    LeaveResult leave(const Connection::ConnectionPtr &connection);                      // 离开：清除成员关系
+    ChatResult chat(const Connection::ConnectionPtr &connection, const std::string &message) const;   // 发言：校验消息并返回同房其他连接
+    CommandResult move(const Connection::ConnectionPtr &connection, std::int32_t dx, std::int32_t dy);  // 提交移动命令（仅运行中）
+    CommandResult attack(const Connection::ConnectionPtr &connection, std::uint64_t target_player_id);  // 提交攻击命令（仅运行中）
+    std::vector<TickResult> tick_rooms();                                                // 结算：推进所有运行中房间
+    LeaveResult disconnect(const Connection::ConnectionPtr &connection);                 // 断线清理：等价 leave，未在房视为成功
 private:
     struct Membership
     {

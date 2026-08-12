@@ -9,6 +9,7 @@
 #include <exception>
 #include "logger.h"
 
+// 构造：保存 base 循环与端口，初始化状态
 TcpServer::TcpServer(EventLoop *base_loop, std::uint16_t port, std::size_t thread_count)
     :base_loop_(base_loop), port_(port), thread_pool_(base_loop, thread_count),
     listen_fd_(-1), listen_registered_(false), started_(false)
@@ -112,6 +113,7 @@ bool TcpServer::started() const
     return started_;
 }
 
+// 扫描全部连接：请求各自 loop 检查超时（base 线程）
 void TcpServer::check_timeouts(std::chrono::milliseconds timeout)
 {
     if (!base_loop_ || !base_loop_->is_in_loop_thread())
@@ -289,6 +291,7 @@ void TcpServer::set_connection_closed_callback(TcpServer::ConnectionClosedCallba
     connection_closed_callback_ = std::move(callback);
 }
 
+// 析构：关闭监听与全部连接
 TcpServer::~TcpServer()
 {
     if (!base_loop_ || !base_loop_->is_in_loop_thread())

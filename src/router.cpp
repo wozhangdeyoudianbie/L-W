@@ -8,6 +8,7 @@
 
 using namespace std;
 
+// 请求路径映射为磁盘文件路径（根路径指向首页）
 string get_file_path(const string &request_path)
 {
     string path = request_path;
@@ -18,6 +19,7 @@ string get_file_path(const string &request_path)
     return "www" + path;
 }
 
+// 判断：是否为普通文件
 bool is_regular_file(const string &file_path)
 {
     struct stat st;
@@ -28,6 +30,7 @@ bool is_regular_file(const string &file_path)
     return S_ISREG(st.st_mode);
 }
 
+// 读取：文件内容读入字符串（二进制）
 bool read_file(const string &file_path, string &content)
 {
     ifstream file(file_path, ios::binary);
@@ -41,6 +44,7 @@ bool read_file(const string &file_path, string &content)
     return true;
 }
 
+// 提取：文件扩展名（无扩展名返回空串）
 string get_file_extension(const string &file_path)
 {
     size_t pos = file_path.rfind('.');
@@ -51,6 +55,7 @@ string get_file_extension(const string &file_path)
     return file_path.substr(pos + 1);
 }
 
+// 映射：扩展名 → Content-Type（未知返回二进制流）
 string get_content_type(const string &file_path)
 {
     string ext = get_file_extension(file_path);
@@ -85,6 +90,7 @@ string get_content_type(const string &file_path)
     return "application/octet-stream";
 }
 
+// 构造静态文件响应（找不到 404 / 读取失败 500 / 成功 200）
 string build_static_file_response(const string &request_path)
 {
     string file_path = get_file_path(request_path);
@@ -115,6 +121,7 @@ string build_static_file_response(const string &request_path)
             false);
 }
 
+// 根据 HTTP 请求文本构造响应
 string build_response_by_request(const string &request_text)
 {
     HttpRequest request;

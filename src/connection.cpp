@@ -208,6 +208,7 @@ void Connection::handle_event(uint32_t events)
     }
 }
 
+// 记账：预占写缓冲区字节额度（超硬上限拒绝）
 bool Connection::reserve_write_bytes(std::size_t len)
 {
     if (len == 0)
@@ -228,6 +229,7 @@ bool Connection::reserve_write_bytes(std::size_t len)
     }
 }
 
+// 记账：释放写缓冲区字节额度
 void Connection::release_write_bytes(std::size_t len)
 {
     if (len == 0)
@@ -249,11 +251,13 @@ void Connection::release_write_bytes(std::size_t len)
     }
 }
 
+// 查询：未写完的字节数（线程安全）
 std::size_t Connection::pending_write_bytes() const
 {
     return pending_write_bytes_.load();
 }
 
+// 判断：是否处于背压（待写字节超过高水位）
 bool Connection::under_backpressure() const
 {
     return pending_write_bytes_.load() >= WRITE_HIGH_WATER_MARK;
@@ -431,6 +435,7 @@ bool Connection::write_to_socket()
     return true;
 }
 
+// 清空写缓冲区并释放额度（须在 loop 线程）
 void Connection::clear_write_buffer_in_loop()
 {
     if (!loop_ || !loop_->is_in_loop_thread())
@@ -446,6 +451,7 @@ void Connection::clear_write_buffer_in_loop()
     release_write_bytes(release);
 }
 
+// 线程安全请求关闭：投递到 loop 线程执行
 void Connection::request_close()
 {
     if (!loop_)

@@ -52,16 +52,16 @@ public:
         std::vector<PlayerGameState> snapshot;
     };
     Room(std::uint32_t room_id, std::size_t capacity);
-    std::uint32_t id() const;
-    std::size_t capacity() const;
-    std::size_t member_count() const;
+    std::uint32_t id() const;                   // 查询：房间号
+    std::size_t capacity() const;               // 查询：房间容量
+    std::size_t member_count() const;           // 查询：当前人数
     std::uint64_t tick_id() const;                      // 当前结算编号
     std::size_t pending_command_count() const;          // 待结算的命令数
     Roomstatemachine::States state() const;             // 房间状态：等待/进行中/已结束
     std::vector<PlayerGameState> game_snapshot() const; // 权威状态快照（按玩家 id 排序）
     Roomstatemachine::Transitionstates start(bool ready_to_start);   // 开局（仅 waiting 态，失败不改状态）
     Roomstatemachine::Transitionstates finish(bool should_finish);   // 结束对局（仅 running 态）
-    bool contains(std::uint64_t player_id) const;
+    bool contains(std::uint64_t player_id) const;    // 查询：玩家是否在房间成员表中
     JoinResult join(const Connection::ConnectionPtr &connection, const std::string &player_name);  // 玩家加入房间
     bool leave(std::uint64_t player_id);                // 玩家离开（运行中同步清游戏状态）
     Commandstates submit_move(std::uint64_t player_id, std::int32_t dx, std::int32_t dy);   // 提交移动命令，tick 时结算

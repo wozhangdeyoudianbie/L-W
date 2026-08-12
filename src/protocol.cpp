@@ -294,6 +294,7 @@ bool Protocol::encode_error(MessageType request_type, ErrorCode error_code, std:
     return true;
 }
 
+// 解析心跳请求
 bool Protocol::decode_heartbeat_request(const std::string &payload, HeartbeatRequest &request)
 {
     if (payload.size() != 8)
@@ -312,6 +313,7 @@ bool Protocol::decode_heartbeat_request(const std::string &payload, HeartbeatReq
 }
 
 
+// 编码心跳确认响应
 bool Protocol::encode_heartbeat_ack(std::uint64_t seq, std::string &payload)
 {
     payload.clear();

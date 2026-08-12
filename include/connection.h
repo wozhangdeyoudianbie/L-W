@@ -19,7 +19,7 @@ public:
     using MessageCallback = std::function<bool(const ConnectionPtr &, Buffer &)>;
     static constexpr std::size_t WRITE_HIGH_WATER_MARK = 512 * 1024;
     static constexpr std::size_t WRITE_HARD_LIMIT = 1024 * 1024;
-    Connection(EventLoop *loop, int fd);
+    Connection(EventLoop *loop, int fd);     // 构造：连接状态机初始化
     void set_close_callback(CloseCallback callback);          // 设置连接关闭回调
     void connect_established();                               // 连接建立：注册 fd 到事件循环
     void connect_destroyed();                                 // 连接销毁：注销 fd 并关闭
@@ -28,18 +28,18 @@ public:
     void request_close();                                     // 线程安全请求关闭连接
     void refresh_peer_activity();                             // 刷新对端活性时间（须在所属 loop 线程）
     void check_timeout(std::chrono::milliseconds timeout);    // 异步请求所属 loop 检查超时
-    ~Connection();
+    ~Connection();                            // 析构：关闭连接
     Connection(const Connection &) = delete;
     Connection &operator=(const Connection &) = delete;
-    int fd() const;
-    bool close() const;
-    Buffer &read_buffer();
-    const Buffer &read_buffer() const;
-    const Buffer &write_buffer() const;
-    std::size_t pending_write_bytes() const;
-    bool under_backpressure() const;
+    int fd() const;               // 查询：文件描述符
+    bool close() const;           // 查询：是否已关闭
+    Buffer &read_buffer();        // 读缓冲区
+    const Buffer &read_buffer() const;   // 读缓冲区（只读）
+    const Buffer &write_buffer() const;  // 写缓冲区（只读）
+    std::size_t pending_write_bytes() const;   // 查询：未写完的字节数（线程安全）
+    bool under_backpressure() const;           // 判断：是否处于背压（待写超过高水位）
     bool peer_eof() const;        // 对端是否已关闭
-    EventLoop *loop() const;
+    EventLoop *loop() const;      // 查询：所属事件循环
 private:
     using Clock = std::chrono::steady_clock;
     enum class State
@@ -59,16 +59,16 @@ private:
     std::atomic<std::size_t> pending_write_bytes_;
     Clock::time_point last_peer_activity_time_;
     bool peer_eof_;
-    void handle_event(uint32_t events);
-    void handle_close();
-    bool reserve_write_bytes(std::size_t len);
-    void release_write_bytes(std::size_t len);
-    void clear_write_buffer_in_loop();
-    void send_in_loop(std::string data);
+    void handle_event(uint32_t events);   // 事件入口：读/写分发
+    void handle_close();                  // 关闭流程：通知上层
+    bool reserve_write_bytes(std::size_t len);   // 记账：预占写缓冲区字节额度（超硬上限拒绝）
+    void release_write_bytes(std::size_t len);   // 记账：释放写缓冲区字节额度
+    void clear_write_buffer_in_loop();    // 清空写缓冲区并释放额度（须在 loop 线程）
+    void send_in_loop(std::string data);  // 在 loop 线程执行发送
     bool read_from_socket();      // 从 socket 读数据到读缓冲区
     bool write_to_socket();       // 把写缓冲区数据写回 socket
     void close_connection();      // 关闭底层 fd
-    void check_timeout_in_loop(std::chrono::milliseconds timeout);
+    void check_timeout_in_loop(std::chrono::milliseconds timeout);   // 在 loop 线程检查超时：超过阈值未刷新活性则走关闭流程
     MessageCallback message_callback_;
     CloseCallback close_callback_;
 };
