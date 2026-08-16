@@ -49,13 +49,15 @@ namespace
         RoomManager::JoinResult join_a = manager.join(connection_a, 1, "Alice");
         CHECK(join_a.state == RoomManager::States::success);
 
-        CHECK(manager.move(connection_a, 1, 0).state == RoomManager::States::room_not_running);
+        CHECK(manager.move(join_a.room_id, join_a.player_id, 1, 0).state == RoomManager::States::room_not_running);
 
         RoomManager::JoinResult join_b = manager.join(connection_b, 1, "Bob");
         CHECK(join_b.state == RoomManager::States::success);
 
-        CHECK(manager.move(connection_a, 1, 0).state == RoomManager::States::success);
-        CHECK(manager.move(connection_a, 1, 0).state == RoomManager::States::already_submitted);
+        CHECK(manager.start_if_full(1) == RoomManager::States::success);
+
+        CHECK(manager.move(join_a.room_id, join_a.player_id, 1, 0).state == RoomManager::States::success);
+        CHECK(manager.move(join_a.room_id, join_a.player_id, 1, 0).state == RoomManager::States::already_submitted);
 
         std::vector<RoomManager::TickResult> results = manager.tick_rooms();
         CHECK(results.size() == 1);
@@ -78,8 +80,8 @@ namespace
         CHECK(bob_state->y == 0);
         CHECK(bob_state->hp == 100);
 
-        CHECK(manager.attack(connection_a, join_b.player_id).state == RoomManager::States::success);
-        CHECK(manager.attack(connection_a, join_b.player_id).state == RoomManager::States::already_submitted);
+        CHECK(manager.attack(join_a.room_id, join_a.player_id, join_b.player_id).state == RoomManager::States::success);
+        CHECK(manager.attack(join_a.room_id, join_a.player_id, join_b.player_id).state == RoomManager::States::already_submitted);
 
         results = manager.tick_rooms();
         CHECK(results.size() == 1);

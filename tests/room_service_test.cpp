@@ -5,6 +5,7 @@
 #include "protocol.h"
 #include <arpa/inet.h>
 #include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -16,6 +17,8 @@
 
 namespace
 {
+    constexpr std::chrono::milliseconds RECONNECT_TIMEOUT(100);
+
     struct Frame
     {
         std::uint16_t type;
@@ -110,6 +113,93 @@ namespace
             sizeof(network_value));
     }
 
+    bool read_u16(const std::string &data, std::size_t &offset, std::uint16_t &value)
+    {
+        if (offset > data.size() || data.size() - offset < 2)
+        {
+            return false;
+        }
+
+        value =
+            (static_cast<std::uint16_t>(
+                static_cast<unsigned char>(data[offset])) << 8) |
+            static_cast<std::uint16_t>(
+                static_cast<unsigned char>(data[offset + 1]));
+
+        offset += 2;
+        return true;
+    }
+
+    bool read_u32(const std::string &data, std::size_t &offset, std::uint32_t &value)
+    {
+        if (offset > data.size() || data.size() - offset < 4)
+        {
+            return false;
+        }
+
+        value = 0;
+
+        for (int i = 0; i < 4; ++i)
+        {
+            value =
+                (value << 8) |
+                static_cast<unsigned char>(
+                    data[offset + static_cast<std::size_t>(i)]);
+        }
+
+        offset += 4;
+        return true;
+    }
+
+    bool read_u64(const std::string &data, std::size_t &offset, std::uint64_t &value)
+    {
+        if (offset > data.size() || data.size() - offset < 8)
+        {
+            return false;
+        }
+
+        value = 0;
+
+        for (int i = 0; i < 8; ++i)
+        {
+            value =
+                (value << 8) |
+                static_cast<unsigned char>(
+                    data[offset + static_cast<std::size_t>(i)]);
+        }
+
+        offset += 8;
+        return true;
+    }
+
+    bool parse_join_ok(
+        const std::string &payload,
+        std::uint32_t &room_id,
+        std::uint64_t &player_id,
+        std::string &token)
+    {
+        std::size_t offset = 0;
+        std::uint16_t token_size = 0;
+
+        if (!read_u32(payload, offset, room_id) ||
+            !read_u64(payload, offset, player_id) ||
+            !read_u16(payload, offset, token_size))
+        {
+            return false;
+        }
+
+        if (token_size == 0 ||
+            token_size > Protocol::MAX_TOKEN_SIZE ||
+            offset > payload.size() ||
+            payload.size() - offset < token_size)
+        {
+            return false;
+        }
+
+        token = payload.substr(offset, token_size);
+        return true;
+    }
+
     std::string make_join_payload(
         std::uint32_t room_id,
         const std::string &player_name)
@@ -130,6 +220,16 @@ namespace
             payload,
             static_cast<std::uint16_t>(message.size()));
         payload.append(message);
+        return payload;
+    }
+
+    std::string make_resume_payload(const std::string &token)
+    {
+        std::string payload;
+        append_u16(
+            payload,
+            static_cast<std::uint16_t>(token.size()));
+        payload.append(token);
         return payload;
     }
 
@@ -263,6 +363,93 @@ namespace
         return decoded && input.empty();
     }
 
+    bool receive_join_ok(
+        Peer &peer,
+        std::uint32_t expected_room_id,
+        std::uint64_t expected_player_id,
+        std::string &token)
+    {
+        std::vector<Frame> frames;
+
+        if (!receive_frames(peer, frames))
+        {
+            return false;
+        }
+
+        if (frames.size() != 1 ||
+            frames.front().type !=
+            static_cast<std::uint16_t>(MessageType::join_ok))
+        {
+            return false;
+        }
+
+        std::uint32_t room_id = 0;
+        std::uint64_t player_id = 0;
+
+        return parse_join_ok(
+            frames.front().payload,
+            room_id,
+            player_id,
+            token) &&
+            room_id == expected_room_id &&
+            player_id == expected_player_id;
+    }
+
+    bool receive_resume_ok(
+        Peer &peer,
+        std::uint32_t expected_room_id,
+        std::uint64_t expected_player_id)
+    {
+        std::vector<Frame> frames;
+
+        if (!receive_frames(peer, frames))
+        {
+            return false;
+        }
+
+        if (frames.size() != 1 ||
+            frames.front().type !=
+            static_cast<std::uint16_t>(MessageType::resume_ok))
+        {
+            return false;
+        }
+
+        std::size_t offset = 0;
+        std::uint32_t room_id = 0;
+        std::uint64_t player_id = 0;
+        std::uint16_t room_state = 0;
+        std::uint64_t tick_id = 0;
+
+        if (!read_u32(
+            frames.front().payload,
+            offset,
+            room_id) ||
+            !read_u64(
+            frames.front().payload,
+            offset,
+            player_id) ||
+            !read_u16(
+            frames.front().payload,
+            offset,
+            room_state) ||
+            !read_u64(
+            frames.front().payload,
+            offset,
+            tick_id))
+        {
+            return false;
+        }
+
+        return
+            room_id == expected_room_id &&
+            player_id == expected_player_id &&
+            room_state ==
+            static_cast<std::uint16_t>(
+                Roomstatemachine::States::running) &&
+            tick_id == 0 &&
+            offset < frames.front().payload.size();
+    }
+
     bool expect_frames(
         Peer &peer,
         const std::vector<Frame> &expected)
@@ -299,7 +486,7 @@ namespace
         EventLoop loop;
         REQUIRE(loop.valid());
 
-        RoomService service(&loop);
+        RoomService service(&loop, RECONNECT_TIMEOUT);
         REQUIRE(service.add_room(7, 2));
 
         Peer alice = make_peer(&loop);
@@ -314,17 +501,16 @@ namespace
             make_join_payload(7, "Alice")));
 
         std::string payload;
-        std::vector<MemberInfo> members;
 
-        REQUIRE(Protocol::encode_join_ok(
+        std::string alice_token;
+
+        REQUIRE(receive_join_ok(
+            alice,
             7,
             1,
-            members,
-            payload));
+            alice_token));
 
-        REQUIRE(expect_frames(
-            alice,
-            {expected_frame(MessageType::join_ok, payload)}));
+        REQUIRE(alice_token.size() == SessionManager::TOKEN_SIZE);
 
         REQUIRE(expect_frames(bob, {}));
 
@@ -334,17 +520,15 @@ namespace
             MessageType::join,
             make_join_payload(7, "Bob")));
 
-        members.push_back({1, "Alice"});
+        std::string bob_token;
 
-        REQUIRE(Protocol::encode_join_ok(
+        REQUIRE(receive_join_ok(
+            bob,
             7,
             2,
-            members,
-            payload));
+            bob_token));
 
-        REQUIRE(expect_frames(
-            bob,
-            {expected_frame(MessageType::join_ok, payload)}));
+        REQUIRE(bob_token.size() == SessionManager::TOKEN_SIZE);
 
         REQUIRE(Protocol::encode_player_joined(
             7,
@@ -407,7 +591,7 @@ namespace
         EventLoop loop;
         REQUIRE(loop.valid());
 
-        RoomService service(&loop);
+        RoomService service(&loop, RECONNECT_TIMEOUT);
         REQUIRE(service.add_room(7, 1));
 
         Peer alice = make_peer(&loop);
@@ -438,17 +622,15 @@ namespace
             MessageType::join,
             make_join_payload(7, "Alice")));
 
-        std::vector<MemberInfo> members;
+        std::string alice_token;
 
-        REQUIRE(Protocol::encode_join_ok(
+        REQUIRE(receive_join_ok(
+            alice,
             7,
             1,
-            members,
-            payload));
+            alice_token));
 
-        REQUIRE(expect_frames(
-            alice,
-            {expected_frame(MessageType::join_ok, payload)}));
+        REQUIRE(alice_token.size() == SessionManager::TOKEN_SIZE);
 
         REQUIRE(dispatch(
             service,
@@ -533,18 +715,23 @@ namespace
         return true;
     }
 
-    bool test_disconnect_cleans_membership_once()
+    bool test_disconnect_resume_stale_close_and_timeout()
     {
         EventLoop loop;
         REQUIRE(loop.valid());
 
-        RoomService service(&loop);
+        RoomService service(&loop, RECONNECT_TIMEOUT);
         REQUIRE(service.add_room(7, 2));
 
         Peer alice = make_peer(&loop);
         Peer bob = make_peer(&loop);
+        Peer resumed_alice = make_peer(&loop);
+        Peer duplicate_resume = make_peer(&loop);
+
         REQUIRE(alice.valid());
         REQUIRE(bob.valid());
+        REQUIRE(resumed_alice.valid());
+        REQUIRE(duplicate_resume.valid());
 
         REQUIRE(dispatch(
             service,
@@ -552,71 +739,153 @@ namespace
             MessageType::join,
             make_join_payload(7, "Alice")));
 
+        std::string alice_token;
+
+        REQUIRE(receive_join_ok(
+            alice,
+            7,
+            1,
+            alice_token));
+
+        REQUIRE(alice_token.size() ==
+            SessionManager::TOKEN_SIZE);
+
         REQUIRE(dispatch(
             service,
             bob.connection,
             MessageType::join,
             make_join_payload(7, "Bob")));
 
-        std::vector<Frame> ignored;
-        REQUIRE(receive_frames(alice, ignored));
-        REQUIRE(receive_frames(bob, ignored));
+        std::string bob_token;
 
-        service.handle_connection_closed(bob.connection);
-
-        std::string payload;
-        REQUIRE(Protocol::encode_player_left(
+        REQUIRE(receive_join_ok(
+            bob,
             7,
             2,
+            bob_token));
+
+        REQUIRE(bob_token.size() ==
+            SessionManager::TOKEN_SIZE);
+
+        std::vector<Frame> ignored;
+        REQUIRE(receive_frames(alice, ignored));
+
+        // Connection A 断线，但玩家1仍留在房间中
+        service.handle_connection_closed(
+            alice.connection);
+
+        REQUIRE(expect_frames(bob, {}));
+
+        // 新连接恢复为原来的玩家1
+        REQUIRE(dispatch(
+            service,
+            resumed_alice.connection,
+            MessageType::resume,
+            make_resume_payload(alice_token)));
+
+        REQUIRE(receive_resume_ok(
+            resumed_alice,
+            7,
+            1));
+
+        // 在线 Session 不能被第二个连接同时恢复
+        REQUIRE(dispatch(
+            service,
+            duplicate_resume.connection,
+            MessageType::resume,
+            make_resume_payload(alice_token)));
+
+        std::string payload;
+
+        REQUIRE(Protocol::encode_error(
+            MessageType::resume,
+            ErrorCode::session_online,
             payload));
 
         REQUIRE(expect_frames(
-            alice,
+            duplicate_resume,
             {expected_frame(
-            MessageType::player_left,
+            MessageType::error,
             payload)}));
 
-        REQUIRE(expect_frames(bob, {}));
+        // Connection A 的重复旧关闭任务不能清除新连接
+        service.handle_connection_closed(
+            alice.connection);
 
-        service.handle_connection_closed(bob.connection);
+        REQUIRE(expect_frames(
+            resumed_alice,
+            {}));
 
-        REQUIRE(expect_frames(alice, {}));
-        REQUIRE(expect_frames(bob, {}));
+        REQUIRE(expect_frames(
+            bob,
+            {}));
 
+        // 恢复后的连接继续使用原来的 player_id = 1
         REQUIRE(dispatch(
             service,
-            alice.connection,
+            resumed_alice.connection,
             MessageType::chat,
-            make_chat_payload("still here")));
+            make_chat_payload("after resume")));
 
         REQUIRE(Protocol::encode_chat_event(
             7,
             1,
-            "still here",
+            "after resume",
             payload));
 
+        const Frame chat_event =
+            expected_frame(
+                MessageType::chat_event,
+                payload);
+
         REQUIRE(expect_frames(
-            alice,
-            {expected_frame(
-            MessageType::chat_event,
-            payload)}));
+            resumed_alice,
+            {chat_event}));
+
+        REQUIRE(expect_frames(
+            bob,
+            {chat_event}));
+
+        // 新连接再次断开，仍然先等待重连
+        service.handle_connection_closed(
+            resumed_alice.connection);
 
         REQUIRE(expect_frames(bob, {}));
 
-        REQUIRE(dispatch(
-            service,
-            bob.connection,
-            MessageType::chat,
-            make_chat_payload("am I here")));
+        // 超时后才永久离开
+        service.handle_session_timeouts(
+            SessionManager::Clock::now() +
+            RECONNECT_TIMEOUT +
+            std::chrono::milliseconds(1));
 
-        REQUIRE(Protocol::encode_error(
-            MessageType::chat,
-            ErrorCode::not_in_room,
+        REQUIRE(Protocol::encode_player_left(
+            7,
+            1,
             payload));
 
         REQUIRE(expect_frames(
             bob,
-            {expected_frame(MessageType::error, payload)}));
+            {expected_frame(
+            MessageType::player_left,
+            payload)}));
+
+        // 永久清理以后，旧 token 已经失效
+        REQUIRE(dispatch(
+            service,
+            duplicate_resume.connection,
+            MessageType::resume,
+            make_resume_payload(alice_token)));
+
+        REQUIRE(Protocol::encode_error(
+            MessageType::resume,
+            ErrorCode::invalid_token,
+            payload));
+
+        REQUIRE(expect_frames(
+            duplicate_resume,
+            {expected_frame(
+            MessageType::error,
+            payload)}));
 
         return true;
     }
@@ -626,7 +895,7 @@ namespace
         EventLoop loop;
         REQUIRE(loop.valid());
 
-        RoomService service(&loop);
+        RoomService service(&loop, RECONNECT_TIMEOUT);
         REQUIRE(service.add_room(7, 2));
 
         Peer alice = make_peer(&loop);
@@ -646,32 +915,34 @@ namespace
                 }
             }));
 
-        std::string join_ok_payload;
+        std::vector<Frame> frames;
+        REQUIRE(receive_frames(alice, frames));
+        REQUIRE(frames.size() == 2);
+        REQUIRE(frames[0].type == message_type(MessageType::join_ok));
+
+        std::uint32_t join_ok_room_id = 0;
+        std::uint64_t join_ok_player_id = 0;
+        std::string alice_token;
+
+        REQUIRE(parse_join_ok(
+            frames[0].payload,
+            join_ok_room_id,
+            join_ok_player_id,
+            alice_token));
+
+        REQUIRE(join_ok_room_id == 7);
+        REQUIRE(join_ok_player_id == 1);
+        REQUIRE(alice_token.size() == SessionManager::TOKEN_SIZE);
+
+        REQUIRE(frames[1].type == message_type(MessageType::chat_event));
+
         std::string chat_event_payload;
-        std::vector<MemberInfo> members;
-
-        REQUIRE(Protocol::encode_join_ok(
-            7,
-            1,
-            members,
-            join_ok_payload));
-
         REQUIRE(Protocol::encode_chat_event(
             7,
             1,
             "hello",
             chat_event_payload));
-
-        REQUIRE(expect_frames(
-            alice,
-            {
-                expected_frame(
-                    MessageType::join_ok,
-                    join_ok_payload),
-                    expected_frame(
-                        MessageType::chat_event,
-                        chat_event_payload)
-            }));
+        REQUIRE(frames[1].payload == chat_event_payload);
 
         return true;
     }
@@ -696,8 +967,8 @@ int main()
             test_business_failures_do_not_change_membership
         },
         {
-            "disconnect_cleans_membership_once",
-            test_disconnect_cleans_membership_once
+            "disconnect_resume_stale_close_and_timeout",
+            test_disconnect_resume_stale_close_and_timeout
         },
         {
             "coalesced_frames_keep_order",

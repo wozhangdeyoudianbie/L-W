@@ -3,6 +3,7 @@
 #include "event_loop.h"
 #include <utility>
 
+
 namespace
 {
     // 状态码→协议错误码（无对应码返回 false）
@@ -23,11 +24,6 @@ namespace
             case RoomManager::States::room_not_joinable:
                 {
                     error_code = ErrorCode::room_not_joinable;
-                    return true;
-                }
-            case RoomManager::States::already_in_room:
-                {
-                    error_code = ErrorCode::already_in_room;
                     return true;
                 }
             case RoomManager::States::not_in_room:
@@ -69,11 +65,45 @@ namespace
         }
         return false;
     }
+
+    // Session 状态→重连协议错误码（无对应码返回 false）
+    bool session_state_to_error_code(SessionManager::States state, ErrorCode &error_code)
+    {
+        switch (state)
+        {
+            case SessionManager::States::invalid_token:
+                {
+                    error_code = ErrorCode::invalid_token;
+                    return true;
+                }
+            case SessionManager::States::session_online:
+                {
+                    error_code = ErrorCode::session_online;
+                    return true;
+                }
+            case SessionManager::States::session_expired:
+                {
+                    error_code = ErrorCode::session_expired;
+                    return true;
+                }
+            case SessionManager::States::success:
+            case SessionManager::States::wrong_thread:
+            case SessionManager::States::invalid_connection:
+            case SessionManager::States::already_bound:
+            case SessionManager::States::session_not_expired:
+            case SessionManager::States::not_bound:
+            case SessionManager::States::internal_error:
+                {
+                    return false;
+                }
+        }
+        return false;
+    }
 }
 
-// 构造：保存 base 循环
-RoomService::RoomService(EventLoop *base_loop)
-    :base_loop_(base_loop)
+// 构造：保存 base 循环并创建会话管理器
+RoomService::RoomService(EventLoop *base_loop, std::chrono::milliseconds reconnect_timeout)
+    :base_loop_(base_loop), session_manager_(reconnect_timeout)
 {
 }
 
@@ -104,7 +134,7 @@ bool RoomService::handle_message(const Connection::ConnectionPtr &connection, Bu
     });
 }
 
-// 连接断开清理
+// 连接断开（base 线程）：Session 与 Room 转为离线，不广播，不删除成员
 void RoomService::handle_connection_closed(const Connection::ConnectionPtr &connection)
 {
     if (!base_loop_ || !connection)
@@ -117,17 +147,17 @@ void RoomService::handle_connection_closed(const Connection::ConnectionPtr &conn
         {
             return;
         }
-        RoomManager::LeaveResult result = room_manager_.disconnect(connection);
-        if (result.state != RoomManager::States::success || result.player_id == 0)
+        const SessionManager::LookupResult lookup_result = session_manager_.lookup(connection);
+        if (lookup_result.state != SessionManager::States::success)
         {
             return;
         }
-        std::string payload;
-        if (!Protocol::encode_player_left(result.room_id, result.player_id, payload))
+        const RoomManager::DetachResult detach_result = room_manager_.detach_connection(lookup_result.room_id, lookup_result.player_id, connection);
+        if (detach_result.state != RoomManager::Bindingstates::success)
         {
             return;
         }
-        broadcast_frame(result.notify_connections, MessageType::player_left, payload);
+        session_manager_.detach(connection, SessionManager::Clock::now());
     });
 }
 
@@ -179,6 +209,11 @@ void RoomService::handle_frame_in_loop(const Connection::ConnectionPtr &connecti
                 handle_attack(connection, payload);
                 return;
             }
+        case MessageType::resume:
+            {
+                handle_resume(connection, payload);
+                return;
+            }
         default:
             {
                 return;
@@ -186,13 +221,23 @@ void RoomService::handle_frame_in_loop(const Connection::ConnectionPtr &connecti
     }
 }
 
-// 处理加入请求
+// 处理加入请求（base 线程）：多对象事务
 void RoomService::handle_join(const Connection::ConnectionPtr &connection, const std::string &payload)
 {
     JoinRequest request;
     if (!Protocol::decode_join_request(payload, request))
     {
         send_error(connection, MessageType::join, ErrorCode::invalid_player_name);
+        return;
+    }
+    const SessionManager::LookupResult lookup_result = session_manager_.lookup(connection);
+    if (lookup_result.state == SessionManager::States::success)
+    {
+        send_error(connection, MessageType::join, ErrorCode::already_in_room);
+        return;
+    }
+    if (lookup_result.state != SessionManager::States::not_bound)
+    {
         return;
     }
     RoomManager::JoinResult result = room_manager_.join(connection, request.room_id, request.player_name);
@@ -205,21 +250,97 @@ void RoomService::handle_join(const Connection::ConnectionPtr &connection, const
         }
         return;
     }
-    std::string response_payload;
-    if (!Protocol::encode_join_ok(result.room_id, result.player_id, result.members, response_payload))
+    const SessionManager::CreateResult session_result = session_manager_.create(connection, result.room_id, result.player_id);
+    if (session_result.state != SessionManager::States::success)
     {
+        room_manager_.leave(result.room_id, result.player_id);
+        return;
+    }
+    std::string response_payload;
+    std::string event_payload;
+    if (!Protocol::encode_join_ok(result.room_id, result.player_id, session_result.token, result.members, response_payload) ||
+        !Protocol::encode_player_joined(result.room_id, result.player_id, request.player_name, event_payload))
+    {
+        const RoomManager::LeaveResult rollback_result = room_manager_.leave(result.room_id, result.player_id);
+        if (rollback_result.state == RoomManager::States::success)
+        {
+            session_manager_.erase_by_connection(connection);
+        }
+        return;
+    }
+    const RoomManager::States start_state = room_manager_.start_if_full(result.room_id);
+    if (start_state != RoomManager::States::success)
+    {
+        const RoomManager::LeaveResult rollback_result = room_manager_.leave(result.room_id, result.player_id);
+        if (rollback_result.state == RoomManager::States::success)
+        {
+            session_manager_.erase_by_connection(connection);
+        }
+        ErrorCode error_code = ErrorCode::invalid_player_name;
+        if (state_to_error_code(start_state, error_code))
+        {
+            send_error(connection, MessageType::join, error_code);
+        }
         return;
     }
     send_frame(connection, MessageType::join_ok, response_payload);
-    std::string event_payload;
-    if (!Protocol::encode_player_joined(result.room_id, result.player_id, request.player_name, event_payload))
-    {
-        return;
-    }
     broadcast_frame(result.notify_connections, MessageType::player_joined, event_payload);
 }
 
-// 处理离开请求
+// 处理重连请求（base 线程）：Session 与 Room 同时绑定新连接
+void RoomService::handle_resume(const Connection::ConnectionPtr &connection, const std::string &payload)
+{
+    ResumeRequest request;
+    if (!Protocol::decode_resume_request(payload, request))
+    {
+        send_error(connection, MessageType::resume, ErrorCode::invalid_token);
+        return;
+    }
+    const SessionManager::ResumeResult session_result = session_manager_.resume(connection, request.token, SessionManager::Clock::now());
+    if (session_result.state != SessionManager::States::success)
+    {
+        ErrorCode error_code = ErrorCode::resume_failed;
+        if (session_state_to_error_code(session_result.state, error_code))
+        {
+            send_error(connection, MessageType::resume, error_code);
+        }
+        return;
+    }
+    const RoomManager::BindingResult room_result = room_manager_.bind_connection(session_result.room_id, session_result.player_id, connection);
+    if (room_result.state != RoomManager::Bindingstates::success)
+    {
+        session_manager_.rollback_resume(connection);
+        send_error(connection, MessageType::resume, ErrorCode::resume_failed);
+        return;
+    }
+    std::string response_payload;
+    if (!Protocol::encode_resume_ok(room_result.room_id, room_result.player_id, room_result.room_state, room_result.tick_id, room_result.members, room_result.snapshot, response_payload))
+    {
+        room_manager_.detach_connection(room_result.room_id, room_result.player_id, connection);
+        session_manager_.rollback_resume(connection);
+        return;
+    }
+    send_frame(connection, MessageType::resume_ok, response_payload);
+}
+
+// 从 Session 查询稳定身份（仅 base 线程，用于普通业务请求）
+bool RoomService::lookup_identity(const Connection::ConnectionPtr &connection, MessageType request_type, std::uint32_t &room_id, std::uint64_t &player_id)
+{
+    const SessionManager::LookupResult result = session_manager_.lookup(connection);
+    if (result.state == SessionManager::States::success)
+    {
+        room_id = result.room_id;
+        player_id = result.player_id;
+        return true;
+    }
+    if (result.state == SessionManager::States::not_bound)
+    {
+        send_error(connection, request_type, ErrorCode::not_in_room);
+    }
+    return false;
+}
+
+// 处理离开请求（base 线程）：永久离开
 void RoomService::handle_leave(const Connection::ConnectionPtr &connection, const std::string &payload)
 {
     if (!Protocol::decode_leave_request(payload))
@@ -227,7 +348,13 @@ void RoomService::handle_leave(const Connection::ConnectionPtr &connection, cons
         send_error(connection, MessageType::leave, ErrorCode::invalid_message);
         return;
     }
-    RoomManager::LeaveResult result = room_manager_.leave(connection);
+    std::uint32_t room_id = 0;
+    std::uint64_t player_id = 0;
+    if (!lookup_identity(connection, MessageType::leave, room_id, player_id))
+    {
+        return;
+    }
+    const RoomManager::LeaveResult result = room_manager_.leave(room_id, player_id);
     if (result.state != RoomManager::States::success)
     {
         ErrorCode error_code = ErrorCode::not_in_room;
@@ -237,21 +364,22 @@ void RoomService::handle_leave(const Connection::ConnectionPtr &connection, cons
         }
         return;
     }
+    session_manager_.erase_by_connection(connection);
     std::string response_payload;
-    if (!Protocol::encode_leave_ok(result.room_id, response_payload))
+    if (!Protocol::encode_leave_ok(room_id, response_payload))
     {
         return;
     }
     send_frame(connection, MessageType::leave_ok, response_payload);
     std::string event_payload;
-    if (!Protocol::encode_player_left(result.room_id, result.player_id, event_payload))
+    if (!Protocol::encode_player_left(room_id, player_id, event_payload))
     {
         return;
     }
     broadcast_frame(result.notify_connections, MessageType::player_left, event_payload);
 }
 
-// 处理聊天请求
+// 处理聊天请求（base 线程）
 void RoomService::handle_chat(const Connection::ConnectionPtr &connection, const std::string &payload)
 {
     ChatRequest request;
@@ -260,7 +388,13 @@ void RoomService::handle_chat(const Connection::ConnectionPtr &connection, const
         send_error(connection, MessageType::chat, ErrorCode::invalid_message);
         return;
     }
-    RoomManager::ChatResult result = room_manager_.chat(connection, request.message);
+    std::uint32_t room_id = 0;
+    std::uint64_t player_id = 0;
+    if (!lookup_identity(connection, MessageType::chat, room_id, player_id))
+    {
+        return;
+    }
+    const RoomManager::ChatResult result = room_manager_.chat(room_id, player_id, request.message);
     if (result.state != RoomManager::States::success)
     {
         ErrorCode error_code = ErrorCode::invalid_message;
@@ -271,7 +405,7 @@ void RoomService::handle_chat(const Connection::ConnectionPtr &connection, const
         return;
     }
     std::string event_payload;
-    if (!Protocol::encode_chat_event(result.room_id, result.player_id, request.message, event_payload))
+    if (!Protocol::encode_chat_event(room_id, player_id, request.message, event_payload))
     {
         return;
     }
@@ -368,6 +502,34 @@ void RoomService::handle_tick(std::uint64_t expirations)
     }
 }
 
+// 清理过期离线会话（base 线程）：永久移除超时玩家并广播
+void RoomService::handle_session_timeouts(SessionManager::Clock::time_point now)
+{
+    if (!base_loop_ || !base_loop_->is_in_loop_thread())
+    {
+        return;
+    }
+    const std::vector<SessionManager::ExpiredSession> expired = session_manager_.expired_sessions(now);
+    for (const auto &item : expired)
+    {
+        const RoomManager::LeaveResult leave_result = room_manager_.leave(item.room_id, item.player_id);
+        if (leave_result.state != RoomManager::States::success)
+        {
+            continue;
+        }
+        if (session_manager_.erase_expired(item.token, now) != SessionManager::States::success)
+        {
+            continue;
+        }
+        std::string event_payload;
+        if (!Protocol::encode_player_left(item.room_id, item.player_id, event_payload))
+        {
+            continue;
+        }
+        broadcast_frame(leave_result.notify_connections, MessageType::player_left, event_payload);
+    }
+}
+
 // 发送错误帧
 bool RoomService::send_error(const Connection::ConnectionPtr &connection, MessageType request_type, ErrorCode error_code)
 {
@@ -379,7 +541,7 @@ bool RoomService::send_error(const Connection::ConnectionPtr &connection, Messag
     return send_frame(connection, MessageType::error, payload);
 }
 
-// 处理移动命令
+// 处理移动命令（base 线程）
 void RoomService::handle_move(const Connection::ConnectionPtr &connection, const std::string &payload)
 {
     MoveRequest request;
@@ -388,7 +550,13 @@ void RoomService::handle_move(const Connection::ConnectionPtr &connection, const
         send_error(connection, MessageType::move, ErrorCode::invalid_message);
         return;
     }
-    RoomManager::CommandResult result = room_manager_.move(connection, request.dx, request.dy);
+    std::uint32_t room_id = 0;
+    std::uint64_t player_id = 0;
+    if (!lookup_identity(connection, MessageType::move, room_id, player_id))
+    {
+        return;
+    }
+    const RoomManager::CommandResult result = room_manager_.move(room_id, player_id, request.dx, request.dy);
     if (result.state != RoomManager::States::success)
     {
         ErrorCode error_code = ErrorCode::invalid_message;
@@ -400,7 +568,7 @@ void RoomService::handle_move(const Connection::ConnectionPtr &connection, const
     }
 }
 
-// 处理攻击命令
+// 处理攻击命令（base 线程）
 void RoomService::handle_attack(const Connection::ConnectionPtr &connection, const std::string &payload)
 {
     AttackRequest request;
@@ -409,7 +577,13 @@ void RoomService::handle_attack(const Connection::ConnectionPtr &connection, con
         send_error(connection, MessageType::attack, ErrorCode::invalid_message);
         return;
     }
-    RoomManager::CommandResult result = room_manager_.attack(connection, request.target_player_id);
+    std::uint32_t room_id = 0;
+    std::uint64_t player_id = 0;
+    if (!lookup_identity(connection, MessageType::attack, room_id, player_id))
+    {
+        return;
+    }
+    const RoomManager::CommandResult result = room_manager_.attack(room_id, player_id, request.target_player_id);
     if (result.state != RoomManager::States::success)
     {
         ErrorCode error_code = ErrorCode::invalid_message;
@@ -440,6 +614,7 @@ bool RoomService::handle_decoded_frame(const Connection::ConnectionPtr &connecti
         case MessageType::chat:
         case MessageType::move:
         case MessageType::attack:
+        case MessageType::resume:
             {
                 connection->refresh_peer_activity();
                 handle_frame(connection, type, payload);

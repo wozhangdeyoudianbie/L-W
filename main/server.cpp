@@ -17,7 +17,8 @@ const std::uint32_t DEFAULT_ROOM_ID = 1;
 const std::size_t DEFAULT_ROOM_CAPACITY = 4;
 const std::uint64_t TICK_INTERVAL_MS = 50;                // 每 50ms 推进一次游戏状态
 const std::uint64_t TIMEOUT_SCAN_INTERVAL_MS = 1000;      // 每 1 秒扫描一次连接
-const std::chrono::milliseconds CONNECTION_TIMEOUT(10000); // 10 秒无合法对端活动则超时
+const std::chrono::milliseconds CONNECTION_TIMEOUT(10000);  // 10 秒无合法对端活动则超时
+const std::chrono::milliseconds RECONNECT_TIMEOUT(30000);   // 断线后 30 秒内允许重连
 
 int main()
 {
@@ -37,7 +38,7 @@ int main()
         Logger::get_instance().flush();
         return 1;
     }
-    RoomService room_service(&base_loop);
+    RoomService room_service(&base_loop, RECONNECT_TIMEOUT);
     if (!room_service.add_room(
         DEFAULT_ROOM_ID,
         DEFAULT_ROOM_CAPACITY))
@@ -65,9 +66,10 @@ int main()
     {
         room_service.handle_connection_closed(connection);
     });
-    TickTimer timeout_timer(&base_loop, TIMEOUT_SCAN_INTERVAL_MS, [&server](std::uint64_t)
+    TickTimer timeout_timer(&base_loop, TIMEOUT_SCAN_INTERVAL_MS, [&server, &room_service](std::uint64_t)
     {
         server.check_timeouts(CONNECTION_TIMEOUT);
+        room_service.handle_session_timeouts(SessionManager::Clock::now());
     });
     if (!timeout_timer.valid())
     {

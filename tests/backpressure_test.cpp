@@ -27,6 +27,7 @@ namespace
     using Clock = std::chrono::steady_clock;
 
     constexpr std::chrono::milliseconds TEST_TIMEOUT(5000);
+    constexpr std::chrono::milliseconds RECONNECT_TIMEOUT(1000);
 
     struct Frame
     {
@@ -294,7 +295,9 @@ namespace
                 return false;
             }
 
-            service_ = std::make_unique<RoomService>(base_loop_);
+            service_ = std::make_unique<RoomService>(
+                base_loop_,
+                RECONNECT_TIMEOUT);
 
             bool room_added = false;
 
@@ -652,19 +655,9 @@ namespace
             return false;
         }
 
-        std::string payload;
-        std::vector<MemberInfo> members;
-
-        return Protocol::encode_join_ok(
-            fixture.room_id_,
-            1,
-            members,
-            payload) &&
-            expect_frames(
-                fixture.alice_,
-                {expected_frame(
-            MessageType::join_ok,
-            payload)});
+        return expect_types(
+            fixture.alice_,
+            {MessageType::join_ok});
     }
 
     bool join_bob(RoomFixture &fixture)
@@ -690,23 +683,9 @@ namespace
             return false;
         }
 
-        std::string join_ok_payload;
-
-        std::vector<MemberInfo> members =
-        {
-            {1, "Alice"}
-        };
-
-        if (!Protocol::encode_join_ok(
-            fixture.room_id_,
-            2,
-            members,
-            join_ok_payload) ||
-            !expect_frames(
+        if (!expect_types(
             fixture.bob_,
-            {expected_frame(
-            MessageType::join_ok,
-            join_ok_payload)}))
+            {MessageType::join_ok}))
         {
             return false;
         }
@@ -1129,6 +1108,26 @@ namespace
         {
         }));
 
+        REQUIRE(expect_frames(
+            fixture.alice_,
+            {}));
+
+        REQUIRE(run_in_loop_and_wait(
+            fixture.base_loop_,
+            [&fixture]()
+        {
+            fixture.service_->handle_session_timeouts(
+                SessionManager::Clock::now() +
+                RECONNECT_TIMEOUT +
+                std::chrono::milliseconds(1));
+        }));
+
+        REQUIRE(run_in_loop_and_wait(
+            fixture.alice_.loop,
+            []()
+        {
+        }));
+
         std::string left_payload;
 
         REQUIRE(Protocol::encode_player_left(
@@ -1269,6 +1268,26 @@ namespace
         }));
 
         REQUIRE(fixture.sync_base());
+
+        REQUIRE(run_in_loop_and_wait(
+            fixture.alice_.loop,
+            []()
+        {
+        }));
+
+        REQUIRE(expect_frames(
+            fixture.alice_,
+            {}));
+
+        REQUIRE(run_in_loop_and_wait(
+            fixture.base_loop_,
+            [&fixture]()
+        {
+            fixture.service_->handle_session_timeouts(
+                SessionManager::Clock::now() +
+                RECONNECT_TIMEOUT +
+                std::chrono::milliseconds(1));
+        }));
 
         REQUIRE(run_in_loop_and_wait(
             fixture.alice_.loop,

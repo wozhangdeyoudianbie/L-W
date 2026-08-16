@@ -19,13 +19,23 @@ public:
         room_not_found,
         room_full,
         room_not_joinable,
-        already_in_room,
         not_in_room,
         invalid_player_name,
         invalid_message,
         player_id_exhausted,
         room_not_running,
         already_submitted,
+        internal_error
+    };
+    enum class Bindingstates
+    {
+        success,
+        invalid_connection,
+        room_not_found,
+        player_not_found,
+        already_bound,
+        not_bound,
+        connection_mismatch,
         internal_error
     };
     struct JoinResult
@@ -56,6 +66,22 @@ public:
         std::uint32_t room_id = 0;
         std::uint64_t player_id = 0;
     };
+    struct BindingResult
+    {
+        Bindingstates state = Bindingstates::internal_error;
+        std::uint32_t room_id = 0;
+        std::uint64_t player_id = 0;
+        Roomstatemachine::States room_state = Roomstatemachine::States::waiting;
+        std::uint64_t tick_id = 0;
+        std::vector<MemberInfo> members;
+        std::vector<PlayerGameState> snapshot;
+    };
+    struct DetachResult
+    {
+        Bindingstates state = Bindingstates::internal_error;
+        std::uint32_t room_id = 0;
+        std::uint64_t player_id = 0;
+    };
     struct TickResult
     {
         std::uint32_t room_id = 0;
@@ -68,22 +94,17 @@ public:
     bool add_room(std::uint32_t room_id, std::size_t capacity);                          // 创建房间
     std::size_t room_count() const;                                                      // 查询：房间总数
     bool contains_room(std::uint32_t room_id) const;                                     // 查询：房间是否存在
-    bool contains_connection(const Connection::ConnectionPtr &connection) const;         // 查询：连接是否已在某房间
-    JoinResult join(const Connection::ConnectionPtr &connection, std::uint32_t room_id, const std::string &player_name);   // 加入：校验后登记成员关系
-    LeaveResult leave(const Connection::ConnectionPtr &connection);                      // 离开：清除成员关系
-    ChatResult chat(const Connection::ConnectionPtr &connection, const std::string &message) const;   // 发言：校验消息并返回同房其他连接
-    CommandResult move(const Connection::ConnectionPtr &connection, std::int32_t dx, std::int32_t dy);  // 提交移动命令（仅运行中）
-    CommandResult attack(const Connection::ConnectionPtr &connection, std::uint64_t target_player_id);  // 提交攻击命令（仅运行中）
-    std::vector<TickResult> tick_rooms();                                                // 结算：推进所有运行中房间
-    LeaveResult disconnect(const Connection::ConnectionPtr &connection);                 // 断线清理：等价 leave，未在房视为成功
+    JoinResult join(const Connection::ConnectionPtr &connection, std::uint32_t room_id, const std::string &player_name);   // 加入：创建房间成员，但不自动开局
+    States start_if_full(std::uint32_t room_id);                                         // 开局：房间满员时从 waiting 转为 running
+    BindingResult bind_connection(std::uint32_t room_id, std::uint64_t player_id, const Connection::ConnectionPtr &connection);   // 重连：恢复成员连接并返回恢复数据
+    DetachResult detach_connection(std::uint32_t room_id, std::uint64_t player_id, const Connection::ConnectionPtr &connection); // 断线：仅解绑匹配连接
+    LeaveResult leave(std::uint32_t room_id, std::uint64_t player_id);                    // 永久离开：删除成员和权威状态
+    ChatResult chat(std::uint32_t room_id, std::uint64_t player_id, const std::string &message) const;   // 稳定身份：发言
+    CommandResult move(std::uint32_t room_id, std::uint64_t player_id, std::int32_t dx, std::int32_t dy);   // 稳定身份：移动
+    CommandResult attack(std::uint32_t room_id, std::uint64_t player_id, std::uint64_t target_player_id);   // 稳定身份：攻击
+    std::vector<TickResult> tick_rooms();                                                // 推进所有运行中房间
 private:
-    struct Membership
-    {
-        std::uint32_t room_id;
-        std::uint64_t player_id;
-    };
     std::unordered_map<std::uint32_t, std::unique_ptr<Room>> rooms_;
-    std::unordered_map<Connection *, Membership> memberships_;
 };
 
 #endif

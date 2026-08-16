@@ -294,3 +294,63 @@ Room::TickResult Room::tick()
     ++tick_id_;
     return TickResult{Tickstates::success, tick_id_, processed, pos, game_state_.snapshot()};
 }
+
+std::vector<MemberInfo> Room::member_snapshot() const
+{
+    std::vector<MemberInfo> snapshot;
+    snapshot.reserve(members_.size());
+    for (const auto &user : members_)
+    {
+        snapshot.push_back({user.second.player_id, user.second.player_name});
+    }
+    std::sort(snapshot.begin(), snapshot.end(), [](const MemberInfo &a, const MemberInfo &b)
+    {
+        return a.player_id < b.player_id;
+    });
+    return snapshot;
+}
+
+Room::Bindingstates Room::bind_connection(std::uint64_t player_id, const Connection::ConnectionPtr &connection)
+{
+    if (!connection)
+    {
+        return Bindingstates::invalid_connection;
+    }
+    auto it = members_.find(player_id);
+    if (it == members_.end())
+    {
+        return Bindingstates::player_not_found;
+    }
+    auto existing = it->second.connection.lock();
+    if (existing)
+    {
+        return Bindingstates::already_bound;
+    }
+    it->second.connection = connection;
+    return Bindingstates::success;
+}
+
+Room::Bindingstates Room::detach_connection(std::uint64_t player_id, const Connection::ConnectionPtr &connection)
+{
+    if (!connection)
+    {
+        return Bindingstates::invalid_connection;
+    }
+    auto it = members_.find(player_id);
+    if (it == members_.end())
+    {
+        return Bindingstates::player_not_found;
+    }
+    auto existing = it->second.connection.lock();
+    if (!existing)
+    {
+        return Bindingstates::not_bound;
+    }
+    if (existing.get() != connection.get())
+    {
+        return Bindingstates::connection_mismatch;
+    }
+    it->second.connection.reset();
+    return Bindingstates::success;
+}
+

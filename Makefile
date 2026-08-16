@@ -131,7 +131,9 @@ ROOM_SERVICE_TEST_SRC = tests/room_service_test.cpp \
                         src/game_state.cpp \
                         src/room.cpp \
                         src/room_manager.cpp \
-                        src/room_service.cpp
+                        src/room_service.cpp \
+                        src/session.cpp \
+                        src/session_manager.cpp
 
 BACKPRESSURE_TEST_TARGET = build/backpressure_test
 BACKPRESSURE_TEST_SRC = tests/backpressure_test.cpp \
@@ -146,7 +148,9 @@ BACKPRESSURE_TEST_SRC = tests/backpressure_test.cpp \
                         src/game_state.cpp \
                         src/room.cpp \
                         src/room_manager.cpp \
-                        src/room_service.cpp
+                        src/room_service.cpp \
+                        src/session.cpp \
+                        src/session_manager.cpp
 
 SLOW_ECHO_CLIENT_TARGET = build/slow_echo_client
 SLOW_ECHO_CLIENT_SRC = tests/slow_echo_client.cpp

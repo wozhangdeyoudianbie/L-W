@@ -32,6 +32,11 @@ namespace
         data.push_back(static_cast<char>(value & 0xff));
     }
 
+    void append_expected_i32(std::string &data, std::int32_t value)
+    {
+        append_expected_u32(data, static_cast<std::uint32_t>(value));
+    }
+
     void append_expected_u64(std::string &data, std::uint64_t value)
     {
         for (int shift = 56; shift >= 0; shift -= 8)
@@ -42,17 +47,20 @@ namespace
 
     bool test_join_ok_layout_and_binary_name()
     {
+        const std::string token = "0123456789abcdef0123456789abcdef";
         const std::string binary_name("A\0B", 3);
         const std::vector<MemberInfo> members = {
             {0x1112131415161718ULL, binary_name},
             {0x2122232425262728ULL, "xy"}};
 
         std::string payload = "stale";
-        REQUIRE(Protocol::encode_join_ok(0x01020304U, 0x0102030405060708ULL, members, payload));
+        REQUIRE(Protocol::encode_join_ok(0x01020304U, 0x0102030405060708ULL, token, members, payload));
 
         std::string expected;
         append_expected_u32(expected, 0x01020304U);
         append_expected_u64(expected, 0x0102030405060708ULL);
+        append_expected_u16(expected, static_cast<std::uint16_t>(token.size()));
+        expected.append(token);
         append_expected_u16(expected, 2);
 
         append_expected_u64(expected, 0x1112131415161718ULL);
@@ -71,31 +79,106 @@ namespace
 
     bool test_join_ok_empty_members_and_failures()
     {
+        const std::string token = "0123456789abcdef0123456789abcdef";
+
         std::string payload = "stale";
-        REQUIRE(Protocol::encode_join_ok(7, 9, {}, payload));
+        REQUIRE(Protocol::encode_join_ok(7, 9, token, {}, payload));
 
         std::string expected;
         append_expected_u32(expected, 7);
         append_expected_u64(expected, 9);
+        append_expected_u16(expected, static_cast<std::uint16_t>(token.size()));
+        expected.append(token);
         append_expected_u16(expected, 0);
         REQUIRE(payload == expected);
 
         payload = "stale";
-        REQUIRE(!Protocol::encode_join_ok(7, 9, {{1, ""}}, payload));
+        REQUIRE(!Protocol::encode_join_ok(7, 9, "", {}, payload));
         REQUIRE(payload.empty());
 
         payload = "stale";
-        REQUIRE(!Protocol::encode_join_ok(7, 9, {{1, std::string(Protocol::MAX_PLAYER_NAME_SIZE + 1, 'x')}}, payload));
+        REQUIRE(!Protocol::encode_join_ok(7, 9, std::string(Protocol::MAX_TOKEN_SIZE + 1, 't'), {}, payload));
+        REQUIRE(payload.empty());
+
+        payload = "stale";
+        REQUIRE(!Protocol::encode_join_ok(7, 9, token, {{1, ""}}, payload));
+        REQUIRE(payload.empty());
+
+        payload = "stale";
+        REQUIRE(!Protocol::encode_join_ok(7, 9, token, {{1, std::string(Protocol::MAX_PLAYER_NAME_SIZE + 1, 'x')}}, payload));
         REQUIRE(payload.empty());
 
         const std::size_t invalid_count = static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max()) + 1;
         const std::vector<MemberInfo> too_many_members(invalid_count);
 
         payload = "stale";
-        REQUIRE(!Protocol::encode_join_ok(7, 9, too_many_members, payload));
+        REQUIRE(!Protocol::encode_join_ok(7, 9, token, too_many_members, payload));
         REQUIRE(payload.empty());
 
         std::cout << "[PASS] join_ok_empty_members_and_failures\n";
+        return true;
+    }
+
+    bool test_resume_ok()
+    {
+        const std::string binary_name("A\0B", 3);
+        const std::vector<MemberInfo> members = {
+            {0x1112131415161718ULL, binary_name}};
+        const std::vector<PlayerGameState> states = {
+            {0x1112131415161718ULL, -2, 3, 90}};
+
+        std::string payload = "stale";
+        REQUIRE(Protocol::encode_resume_ok(
+            0x01020304U,
+            0x0102030405060708ULL,
+            Roomstatemachine::States::running,
+            0x2122232425262728ULL,
+            members,
+            states,
+            payload));
+
+        std::string expected;
+        append_expected_u32(expected, 0x01020304U);
+        append_expected_u64(expected, 0x0102030405060708ULL);
+        append_expected_u16(expected, static_cast<std::uint16_t>(Roomstatemachine::States::running));
+        append_expected_u64(expected, 0x2122232425262728ULL);
+
+        append_expected_u16(expected, 1);
+        append_expected_u64(expected, 0x1112131415161718ULL);
+        append_expected_u16(expected, 3);
+        expected.append(binary_name);
+
+        append_expected_u16(expected, 1);
+        append_expected_u64(expected, 0x1112131415161718ULL);
+        append_expected_i32(expected, -2);
+        append_expected_i32(expected, 3);
+        append_expected_i32(expected, 90);
+
+        REQUIRE(payload == expected);
+
+        payload = "stale";
+        REQUIRE(!Protocol::encode_resume_ok(
+            1,
+            1,
+            Roomstatemachine::States::waiting,
+            0,
+            {{1, ""}},
+            {},
+            payload));
+        REQUIRE(payload.empty());
+
+        payload = "stale";
+        REQUIRE(!Protocol::encode_resume_ok(
+            1,
+            1,
+            Roomstatemachine::States::waiting,
+            0,
+            {},
+            {{0, 0, 0, 100}},
+            payload));
+        REQUIRE(payload.empty());
+
+        std::cout << "[PASS] resume_ok\n";
         return true;
     }
 
@@ -196,7 +279,10 @@ namespace
         const std::vector<MessageType> request_types = {
             MessageType::join,
             MessageType::leave,
-            MessageType::chat};
+            MessageType::chat,
+            MessageType::move,
+            MessageType::attack,
+            MessageType::resume};
 
         const std::vector<ErrorCode> error_codes = {
             ErrorCode::room_not_found,
@@ -205,7 +291,14 @@ namespace
             ErrorCode::not_in_room,
             ErrorCode::invalid_player_name,
             ErrorCode::invalid_message,
-            ErrorCode::player_id_exhausted};
+            ErrorCode::player_id_exhausted,
+            ErrorCode::room_not_joinable,
+            ErrorCode::room_not_running,
+            ErrorCode::already_submitted,
+            ErrorCode::invalid_token,
+            ErrorCode::session_online,
+            ErrorCode::session_expired,
+            ErrorCode::resume_failed};
 
         for (MessageType request_type : request_types)
         {
@@ -253,6 +346,10 @@ int main()
         return 1;
     }
     if (!test_chat_event())
+    {
+        return 1;
+    }
+    if (!test_resume_ok())
     {
         return 1;
     }

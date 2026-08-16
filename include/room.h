@@ -32,6 +32,15 @@ public:
         player_not_found,
         already_submitted
     };
+    enum class Bindingstates
+    {
+        success,
+        invalid_connection,
+        player_not_found,
+        already_bound,
+        not_bound,
+        connection_mismatch
+    };
     enum class Tickstates
     {
         success,
@@ -58,16 +67,19 @@ public:
     std::uint64_t tick_id() const;                      // 当前结算编号
     std::size_t pending_command_count() const;          // 待结算的命令数
     Roomstatemachine::States state() const;             // 房间状态：等待/进行中/已结束
+    std::vector<MemberInfo> member_snapshot() const;    // 成员身份快照（按玩家 id 排序）
     std::vector<PlayerGameState> game_snapshot() const; // 权威状态快照（按玩家 id 排序）
     Roomstatemachine::Transitionstates start(bool ready_to_start);   // 开局（仅 waiting 态，失败不改状态）
     Roomstatemachine::Transitionstates finish(bool should_finish);   // 结束对局（仅 running 态）
     bool contains(std::uint64_t player_id) const;    // 查询：玩家是否在房间成员表中
-    JoinResult join(const Connection::ConnectionPtr &connection, const std::string &player_name);  // 玩家加入房间
-    bool leave(std::uint64_t player_id);                // 玩家离开（运行中同步清游戏状态）
+    JoinResult join(const Connection::ConnectionPtr &connection, const std::string &player_name);  // 新玩家加入房间
+    Bindingstates bind_connection(std::uint64_t player_id, const Connection::ConnectionPtr &connection);    // 为离线成员绑定新连接
+    Bindingstates detach_connection(std::uint64_t player_id, const Connection::ConnectionPtr &connection);  // 仅解绑匹配的当前连接
+    bool leave(std::uint64_t player_id);                // 玩家永久离开（运行中同步清游戏状态）
     Commandstates submit_move(std::uint64_t player_id, std::int32_t dx, std::int32_t dy);   // 提交移动命令，tick 时结算
     Commandstates submit_attack(std::uint64_t player_id, std::uint64_t target_player_id);   // 提交攻击命令，tick 时结算
     TickResult tick();                                  // 结算一批命令，推进一帧
-    std::vector<Connection::ConnectionPtr> connections(std::uint64_t excluded_player_id = 0) const;  // 房间内其他玩家连接（用于广播）
+    std::vector<Connection::ConnectionPtr> connections(std::uint64_t excluded_player_id = 0) const;  // 当前在线玩家连接（用于广播）
 private:
     struct Member
     {

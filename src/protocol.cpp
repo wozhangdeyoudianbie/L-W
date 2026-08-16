@@ -173,9 +173,13 @@ bool Protocol::decode_attack_request(const std::string &payload, AttackRequest &
 }
 
 // 编码加入成功响应
-bool Protocol::encode_join_ok(std::uint32_t room_id, std::uint64_t self_player_id, const std::vector<MemberInfo> &members, std::string &payload)
+bool Protocol::encode_join_ok(std::uint32_t room_id, std::uint64_t self_player_id, const std::string &token, const std::vector<MemberInfo> &members, std::string &payload)
 {
     payload.clear();
+    if (token.empty() || token.size() > MAX_TOKEN_SIZE)
+    {
+        return false;
+    }
     if (members.size() > std::numeric_limits<std::uint16_t>::max())
     {
         return false;
@@ -190,12 +194,60 @@ bool Protocol::encode_join_ok(std::uint32_t room_id, std::uint64_t self_player_i
     std::string temp_;
     append_u32(temp_, room_id);
     append_u64(temp_, self_player_id);
+    append_u16(temp_, static_cast<std::uint16_t>(token.size()));
+    temp_.append(token);
     append_u16(temp_, static_cast<std::uint16_t>(members.size()));
     for (const auto &member : members)
     {
         append_u64(temp_, member.player_id);
         append_u16(temp_, static_cast<std::uint16_t>(member.player_name.size()));
         temp_.append(member.player_name);
+    }
+    payload = std::move(temp_);
+    return true;
+}
+
+// 编码重连成功响应
+bool Protocol::encode_resume_ok(std::uint32_t room_id, std::uint64_t self_player_id, Roomstatemachine::States room_state, std::uint64_t tick_id, const std::vector<MemberInfo> &members, const std::vector<PlayerGameState> &states, std::string &payload)
+{
+    payload.clear();
+    if (members.size() > std::numeric_limits<std::uint16_t>::max() || states.size() > std::numeric_limits<std::uint16_t>::max())
+    {
+        return false;
+    }
+    for (const auto &member : members)
+    {
+        if (member.player_name.empty() || member.player_name.size() > MAX_PLAYER_NAME_SIZE)
+        {
+            return false;
+        }
+    }
+    for (const auto &state : states)
+    {
+        if (state.player_id == 0)
+        {
+            return false;
+        }
+    }
+    std::string temp_;
+    append_u32(temp_, room_id);
+    append_u64(temp_, self_player_id);
+    append_u16(temp_, static_cast<std::uint16_t>(room_state));
+    append_u64(temp_, tick_id);
+    append_u16(temp_, static_cast<std::uint16_t>(members.size()));
+    for (const auto &member : members)
+    {
+        append_u64(temp_, member.player_id);
+        append_u16(temp_, static_cast<std::uint16_t>(member.player_name.size()));
+        temp_.append(member.player_name);
+    }
+    append_u16(temp_, static_cast<std::uint16_t>(states.size()));
+    for (const auto &state : states)
+    {
+        append_u64(temp_, state.player_id);
+        append_i32(temp_, state.x);
+        append_i32(temp_, state.y);
+        append_i32(temp_, state.hp);
     }
     payload = std::move(temp_);
     return true;
@@ -267,6 +319,7 @@ bool Protocol::encode_error(MessageType request_type, ErrorCode error_code, std:
         case MessageType::chat:
         case MessageType::move:
         case MessageType::attack:
+        case MessageType::resume:
             break;
         default:
             return false;
@@ -283,6 +336,10 @@ bool Protocol::encode_error(MessageType request_type, ErrorCode error_code, std:
         case ErrorCode::room_not_joinable:
         case ErrorCode::room_not_running:
         case ErrorCode::already_submitted:
+        case ErrorCode::invalid_token:
+        case ErrorCode::session_online:
+        case ErrorCode::session_expired:
+        case ErrorCode::resume_failed:
             break;
         default:
             return false;
@@ -308,6 +365,25 @@ bool Protocol::decode_heartbeat_request(const std::string &payload, HeartbeatReq
     }
     HeartbeatRequest temp_{};
     temp_.seq = seq;
+    request = std::move(temp_);
+    return true;
+}
+
+// 解析重连请求
+bool Protocol::decode_resume_request(const std::string &payload, ResumeRequest &request)
+{
+    std::uint16_t token_size = 0;
+    if (!read_u16(payload, 0, token_size))
+    {
+        return false;
+    }
+    const std::size_t offset = 2;
+    if (token_size == 0 || token_size > MAX_TOKEN_SIZE || payload.size() - offset != token_size)
+    {
+        return false;
+    }
+    ResumeRequest temp_;
+    temp_.token = payload.substr(offset, token_size);
     request = std::move(temp_);
     return true;
 }
