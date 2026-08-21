@@ -15,6 +15,7 @@ public:
         offline
     };
     Session(std::uint32_t room_id, std::uint64_t player_id, const Connection::ConnectionPtr &connection);   // 构造：绑定连接并置为在线
+    Session(std::uint32_t room_id, std::uint64_t palyer_id, Clock::time_point offline_deadline);
     std::uint32_t room_id() const;                                 // 查询：房间号
     std::uint64_t player_id() const;                               // 查询：玩家 id
     States state() const;                                          // 查询：会话状态（在线/离线）

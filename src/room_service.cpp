@@ -1,6 +1,7 @@
 #include "room_service.h"
 #include "codec.h"
 #include "event_loop.h"
+#include <set>
 #include <utility>
 
 
@@ -64,6 +65,25 @@ namespace
                 }
         }
         return false;
+    }
+
+    // 跨对象身份一致性：房间成员 (room_id, player_id) 集合必须与会话集合完全相同
+    bool identities_match(const std::vector<RoomCheckpoint> &rooms, const std::vector<SessionCheckpoint> &sessions)
+    {
+        std::set<std::pair<std::uint32_t, std::uint64_t>> room_identities;
+        for (const auto &room : rooms)
+        {
+            for (const auto &member : room.members)
+            {
+                room_identities.emplace(room.room_id, member.player_id);
+            }
+        }
+        std::set<std::pair<std::uint32_t, std::uint64_t>> session_identities;
+        for (const auto &session : sessions)
+        {
+            session_identities.emplace(session.room_id, session.player_id);
+        }
+        return room_identities == session_identities;
     }
 
     // Session 状态→重连协议错误码（无对应码返回 false）
@@ -646,4 +666,59 @@ bool RoomService::handle_heartbeat(const Connection::ConnectionPtr &connection, 
         return false;
     }
     return send_frame(connection, MessageType::heartbeat_ack, temp_);
+}
+
+// 生成全局检查点（须在 base 线程）：先收集再校验跨对象一致性，全部成功才赋给输出
+bool RoomService::make_checkpoint(std::uint64_t generation, ServerCheckpoint &checkpoint) const
+{
+    if (generation == 0)
+    {
+        return false;
+    }
+    if (!base_loop_ || !base_loop_->is_in_loop_thread())
+    {
+        return false;
+    }
+    ServerCheckpoint temp_checkpoint;
+    temp_checkpoint.generation = generation;
+    if (!room_manager_.make_checkpoint(temp_checkpoint.rooms))
+    {
+        return false;
+    }
+    if (!session_manager_.make_checkpoint(temp_checkpoint.sessions))
+    {
+        return false;
+    }
+    if (!identities_match(temp_checkpoint.rooms, temp_checkpoint.sessions))
+    {
+        return false;
+    }
+    checkpoint = std::move(temp_checkpoint);
+    return true;
+}
+
+// 恢复全局检查点（须在 base 线程、监听以前）：先验证再按序恢复，失败不影响正式对象
+bool RoomService::restore_checkpoint(const ServerCheckpoint &checkpoint, SessionManager::Clock::time_point now)
+{
+    if (checkpoint.generation == 0)
+    {
+        return false;
+    }
+    if (!base_loop_ || !base_loop_->is_in_loop_thread())
+    {
+        return false;
+    }
+    if (!identities_match(checkpoint.rooms, checkpoint.sessions))
+    {
+        return false;
+    }
+    if (!room_manager_.restore_checkpoint(checkpoint.rooms))
+    {
+        return false;
+    }
+    if (!session_manager_.restore_checkpoint(checkpoint.sessions, now))
+    {
+        return false;
+    }
+    return true;
 }

@@ -135,6 +135,38 @@ std::vector<PlayerGameState> Gamestate::snapshot() const
     return snapshot_;
 }
 
+// 恢复：从持久化状态全有或全无地恢复（允许空状态与 hp == 0）
+bool Gamestate::restore(const std::vector<PlayerGameState> &states)
+{
+    if (states.size() > MAX_PLAYERS)
+    {
+        return false;
+    }
+    std::unordered_map<std::uint64_t, PlayerGameState> temp_players;
+    for (const auto &state : states)
+    {
+        if (state.player_id == 0)
+        {
+            return false;
+        }
+        if (temp_players.find(state.player_id) != temp_players.end())
+        {
+            return false;
+        }
+        if (state.x < MIN_POSITION || state.x > MAX_POSITION || state.y < MIN_POSITION || state.y > MAX_POSITION)
+        {
+            return false;
+        }
+        if (state.hp < 0 || state.hp > INITIAL_HP)
+        {
+            return false;
+        }
+        temp_players.emplace(state.player_id, state);
+    }
+    players_.swap(temp_players);
+    return true;
+}
+
 // 攻击：扣目标 10 点血
 Gamestate::Attackresult Gamestate::attack_player(std::uint64_t attacker_id, std::uint64_t target_player_id)
 {

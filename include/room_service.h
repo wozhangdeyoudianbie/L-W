@@ -7,6 +7,7 @@
 #include "protocol.h"
 #include "room_manager.h"
 #include "session_manager.h"
+#include "checkpoint.h"
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -24,6 +25,8 @@ public:
     void handle_connection_closed(const Connection::ConnectionPtr &connection);         // 连接断开：Session 和 Room 转为离线
     void handle_tick(std::uint64_t expirations);                                         // 定时结算房间
     void handle_session_timeouts(SessionManager::Clock::time_point now);                 // 清理过期离线会话并永久移除玩家
+    bool make_checkpoint(std::uint64_t generation, ServerCheckpoint &checkpoint) const;                    // 生成全局检查点（须在 base 线程）
+    bool restore_checkpoint(const ServerCheckpoint &checkpoint, SessionManager::Clock::time_point now);    // 恢复全局检查点（须在 base 线程、监听以前）
 private:
     bool handle_decoded_frame(const Connection::ConnectionPtr &connection, std::uint16_t type, const std::string &payload);   // I/O 工作线程：校验类型并投递
     bool handle_heartbeat(const Connection::ConnectionPtr &connection, const std::string &payload);   // I/O 工作线程：处理心跳

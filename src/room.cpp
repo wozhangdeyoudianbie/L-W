@@ -1,4 +1,5 @@
 #include "room.h"
+#include <algorithm>
 
 // 构造：创建房间
 Room::Room(std::uint32_t room_id, std::size_t capacity)
@@ -352,5 +353,135 @@ Room::Bindingstates Room::detach_connection(std::uint64_t player_id, const Conne
     }
     it->second.connection.reset();
     return Bindingstates::success;
+}
+
+// 生成独立快照：只读数据，全部填入临时对象后才赋给输出
+bool Room::make_checkpoint(RoomCheckpoint &checkpoint) const
+{
+    RoomCheckpoint temp;
+    temp.room_id = room_id_;
+    temp.capacity = capacity_;
+    temp.next_player_id = next_player_id_;
+    temp.state = state_machine_.state();
+    temp.tick_id = tick_id_;
+    temp.members.reserve(members_.size());
+    for (const auto &entry : members_)
+    {
+        const Member &member = entry.second;
+        temp.members.push_back(CheckpointMember{member.player_id, member.player_name});
+    }
+    std::sort(temp.members.begin(), temp.members.end(), [](const CheckpointMember &a, const CheckpointMember &b)
+    {
+        return a.player_id < b.player_id;
+    });
+    temp.game_states = game_state_.snapshot();
+    checkpoint = std::move(temp);
+    return true;
+}
+
+// 恢复检查点业务数据：全部校验通过后一次性发布
+bool Room::restore_checkpoint(const RoomCheckpoint checkpoint)
+{
+    if (checkpoint.room_id != room_id_)
+    {
+        return false;
+    }
+    if (checkpoint.capacity != capacity_)
+    {
+        return false;
+    }
+    if (checkpoint.members.size() > capacity_)
+    {
+        return false;
+    }
+    std::unordered_map<std::uint64_t, Member> temp_members;
+    for (const auto &member : checkpoint.members)
+    {
+        if (member.player_id == 0)
+        {
+            return false;
+        }
+        if (temp_members.find(member.player_id) != temp_members.end())
+        {
+            return false;
+        }
+        if (member.player_name.empty() || member.player_name.size() > Protocol::MAX_PLAYER_NAME_SIZE)
+        {
+            return false;
+        }
+        temp_members.emplace(member.player_id, Member{member.player_id, member.player_name, {}});
+    }
+    if (checkpoint.next_player_id != 0)
+    {
+        for (const auto &entry : temp_members)
+        {
+            if (checkpoint.next_player_id <= entry.first)
+            {
+                return false;
+            }
+        }
+    }
+    Gamestate temp_game_state;
+    Roomstatemachine temp_state_machine;
+    switch (checkpoint.state)
+    {
+        case Roomstatemachine::States::waiting:
+            {
+                if (checkpoint.tick_id != 0)
+                {
+                    return false;
+                }
+                if (!checkpoint.game_states.empty())
+                {
+                    return false;
+                }
+                break;
+            }
+        case Roomstatemachine::States::running:
+            {
+                if (temp_state_machine.start(true) != Roomstatemachine::Transitionstates::success)
+                {
+                    return false;
+                }
+                break;
+            }
+        case Roomstatemachine::States::finished:
+            {
+                if (temp_state_machine.start(true) != Roomstatemachine::Transitionstates::success)
+                {
+                    return false;
+                }
+                if (temp_state_machine.finish(true) != Roomstatemachine::Transitionstates::success)
+                {
+                    return false;
+                }
+                break;
+            }
+    }
+    if (checkpoint.state == Roomstatemachine::States::running || checkpoint.state == Roomstatemachine::States::finished)
+    {
+        if (checkpoint.game_states.size() != temp_members.size())
+        {
+            return false;
+        }
+        for (const auto &state : checkpoint.game_states)
+        {
+            if (temp_members.find(state.player_id) == temp_members.end())
+            {
+                return false;
+            }
+        }
+    }
+    if (!temp_game_state.restore(checkpoint.game_states))
+    {
+        return false;
+    }
+    members_ = std::move(temp_members);
+    game_state_ = std::move(temp_game_state);
+    state_machine_ = std::move(temp_state_machine);
+    next_player_id_ = checkpoint.next_player_id;
+    tick_id_ = checkpoint.tick_id;
+    pending_commands_.clear();
+    return true;
 }
 

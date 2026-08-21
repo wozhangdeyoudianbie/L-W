@@ -6,6 +6,7 @@
 #include "game_state.h"
 #include "protocol.h"
 #include "room_state_machine.h"
+#include "checkpoint.h"
 #include<cstddef>
 #include<cstdint>
 #include<memory>
@@ -80,6 +81,8 @@ public:
     Commandstates submit_attack(std::uint64_t player_id, std::uint64_t target_player_id);   // 提交攻击命令，tick 时结算
     TickResult tick();                                  // 结算一批命令，推进一帧
     std::vector<Connection::ConnectionPtr> connections(std::uint64_t excluded_player_id = 0) const;  // 当前在线玩家连接（用于广播）
+    bool make_checkpoint(RoomCheckpoint &checkpoint) const;  //生成独立快照
+    bool restore_checkpoint(const RoomCheckpoint checkpoint);  //恢复检查点业务数据
 private:
     struct Member
     {

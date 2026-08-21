@@ -51,6 +51,7 @@ public:
     bool player_state(std::uint64_t player_id, PlayerGameState &state) const;       // 查询单个玩家状态
     std::vector<PlayerGameState> snapshot() const;                    // 全部玩家快照（按 id 排序）
     Attackresult attack_player(std::uint64_t attacker_id, std::uint64_t target_player_id);  // 攻击：扣目标 10 点血
+    bool restore(const std::vector<PlayerGameState> &states);  // 从持久化状态全有或全无地恢复
 private:
     static constexpr std::int32_t INITIAL_HP = 100;
     static constexpr std::int32_t MIN_POSITION = 0;

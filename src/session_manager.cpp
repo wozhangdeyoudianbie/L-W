@@ -1,4 +1,5 @@
 #include "session_manager.h"
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <sys/random.h>
@@ -278,4 +279,60 @@ SessionManager::States SessionManager::erase_expired(const std::string &token, S
     }
     sessions_.erase(session_it);
     return States::success;
+}
+
+// 生成全部会话快照：遍历 sessions_，令牌取自 map 键，按令牌排序后完整赋给输出
+bool SessionManager::make_checkpoint(std::vector<SessionCheckpoint> &checkpoints) const
+{
+    std::vector<SessionCheckpoint> temp_checkpoints;
+    temp_checkpoints.reserve(sessions_.size());
+    for (const auto &entry : sessions_)
+    {
+        const Session *session = entry.second.get();
+        temp_checkpoints.push_back(SessionCheckpoint{entry.first, session->room_id(), session->player_id()});
+    }
+    std::sort(temp_checkpoints.begin(), temp_checkpoints.end(), [](const SessionCheckpoint &a, const SessionCheckpoint &b)
+    {
+        return a.token < b.token;
+    });
+    checkpoints = std::move(temp_checkpoints);
+    return true;
+}
+
+// 恢复全部会话检查点：全部离线构造并验证通过后才替换正式 sessions_，bindings_ 不可恢复
+bool SessionManager::restore_checkpoint(const std::vector<SessionCheckpoint> &checkpoints, Clock::time_point now)
+{
+    const Clock::time_point deadline = now + reconnect_timeout_;
+    std::unordered_map<std::string, std::unique_ptr<Session>> temp_sessions;
+    for (const auto &checkpoint : checkpoints)
+    {
+        if (checkpoint.token.size() != TOKEN_SIZE)
+        {
+            return false;
+        }
+        for (char ch : checkpoint.token)
+        {
+            const bool is_lower_hex = (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f');
+            if (!is_lower_hex)
+            {
+                return false;
+            }
+        }
+        if (temp_sessions.find(checkpoint.token) != temp_sessions.end())
+        {
+            return false;
+        }
+        for (const auto &entry : temp_sessions)
+        {
+            const Session *session = entry.second.get();
+            if (session->room_id() == checkpoint.room_id && session->player_id() == checkpoint.player_id)
+            {
+                return false;
+            }
+        }
+        temp_sessions.emplace(checkpoint.token, std::make_unique<Session>(checkpoint.room_id, checkpoint.player_id, deadline));
+    }
+    sessions_.swap(temp_sessions);
+    bindings_.clear();
+    return true;
 }

@@ -2,6 +2,7 @@
 #define SESSION_MANAGER_H
 
 #include "session.h"
+#include "checkpoint.h"
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -70,6 +71,8 @@ public:
     States erase_by_connection(const Connection::ConnectionPtr &connection);                 // 删除：按连接移除会话与绑定关系
     std::vector<ExpiredSession> expired_sessions(Clock::time_point now) const;               // 查询：返回所有已过期的离线会话
     States erase_expired(const std::string &token, Clock::time_point now);                   // 删除：按令牌移除过期会话
+    bool make_checkpoint(std::vector<SessionCheckpoint> &checkpoints) const;                    // 生成全部会话快照
+    bool restore_checkpoint(const std::vector<SessionCheckpoint> &checkpoints, Clock::time_point now);   // 恢复全部会话检查点（bindings_ 不可恢复）
 private:
     std::string generate_token() const;   // 生成随机重连令牌（十六进制字符串）
     std::chrono::milliseconds reconnect_timeout_;

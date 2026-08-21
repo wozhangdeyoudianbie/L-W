@@ -1,4 +1,6 @@
 #include "room_manager.h"
+#include <algorithm>
+#include <limits>
 #include <utility>
 
 // 创建房间
@@ -402,6 +404,53 @@ RoomManager::DetachResult RoomManager::detach_connection(std::uint32_t room_id, 
                 return temp_;
             }
     }
+}
+
+// 生成全部房间快照：遍历 rooms_ 生成检查点并按 room_id 排序后完整赋给输出
+bool RoomManager::make_checkpoint(std::vector<RoomCheckpoint> &checkpoints) const
+{
+    std::vector<RoomCheckpoint> temp_checkpoints;
+    temp_checkpoints.reserve(rooms_.size());
+    for (const auto &entry : rooms_)
+    {
+        RoomCheckpoint checkpoint;
+        if (!entry.second->make_checkpoint(checkpoint))
+        {
+            return false;
+        }
+        temp_checkpoints.push_back(std::move(checkpoint));
+    }
+    std::sort(temp_checkpoints.begin(), temp_checkpoints.end(), [](const RoomCheckpoint &a, const RoomCheckpoint &b)
+    {
+        return a.room_id < b.room_id;
+    });
+    checkpoints = std::move(temp_checkpoints);
+    return true;
+}
+
+// 恢复全部房间检查点：先构造临时表，全部成功后才替换正式 rooms_
+bool RoomManager::restore_checkpoint(const std::vector<RoomCheckpoint> checkpoints)
+{
+    std::unordered_map<std::uint32_t, std::unique_ptr<Room>> temp_rooms;
+    for (const auto &checkpoint : checkpoints)
+    {
+        if (checkpoint.capacity > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()))
+        {
+            return false;
+        }
+        if (temp_rooms.find(checkpoint.room_id) != temp_rooms.end())
+        {
+            return false;
+        }
+        auto room = std::make_unique<Room>(checkpoint.room_id, static_cast<std::size_t>(checkpoint.capacity));
+        if (!room->restore_checkpoint(checkpoint))
+        {
+            return false;
+        }
+        temp_rooms.emplace(checkpoint.room_id, std::move(room));
+    }
+    rooms_.swap(temp_rooms);
+    return true;
 }
 
 

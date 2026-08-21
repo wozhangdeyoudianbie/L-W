@@ -7,6 +7,12 @@ Session::Session(std::uint32_t room_id, std::uint64_t player_id, const Connectio
 {
 }
 
+// 构造：恢复离线会话（不绑定连接，登记重连截止时间）
+Session::Session(std::uint32_t room_id, std::uint64_t player_id, Clock::time_point offline_deadline)
+    :room_id_(room_id), player_id_(player_id), state_(States::offline), connection_(), offline_deadline_(offline_deadline)
+{
+}
+
 // 查询：房间号
 std::uint32_t Session::room_id() const
 {

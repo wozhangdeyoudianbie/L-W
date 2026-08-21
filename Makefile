@@ -21,6 +21,10 @@ SRC = main/server.cpp \
 	src/tick_timer.cpp \
 	src/session.cpp \
 	src/session_manager.cpp \
+	src/checkpoint_codec.cpp \
+	src/checkpoint_store.cpp \
+	src/persistence_service.cpp \
+	src/shutdown_signal.cpp
 
 ROOM_STATE_MACHINE_TEST_TARGET = build/room_state_machine_test
 ROOM_STATE_MACHINE_TEST_SRC = tests/room_state_machine_test.cpp \
@@ -152,6 +156,29 @@ BACKPRESSURE_TEST_SRC = tests/backpressure_test.cpp \
                         src/session.cpp \
                         src/session_manager.cpp
 
+PERSISTENCE_STATE_TEST_TARGET = build/persistence_state_test
+PERSISTENCE_STATE_TEST_SRC = tests/persistence_state_test.cpp \
+                             src/logger.cpp \
+                             src/buffer.cpp \
+                             src/codec.cpp \
+                             src/event_loop.cpp \
+                             src/connection.cpp \
+                             src/protocol.cpp \
+                             src/room_state_machine.cpp \
+                             src/game_state.cpp \
+                             src/room.cpp \
+                             src/room_manager.cpp \
+                             src/room_service.cpp \
+                             src/session.cpp \
+                             src/session_manager.cpp \
+                             src/checkpoint_codec.cpp \
+                             src/checkpoint_store.cpp
+
+PERSISTENCE_STORE_TEST_TARGET = build/persistence_store_test
+PERSISTENCE_STORE_TEST_SRC = tests/persistence_store_test.cpp \
+                             src/checkpoint_codec.cpp \
+                             src/checkpoint_store.cpp
+
 SLOW_ECHO_CLIENT_TARGET = build/slow_echo_client
 SLOW_ECHO_CLIENT_SRC = tests/slow_echo_client.cpp
 
@@ -240,6 +267,14 @@ $(BACKPRESSURE_TEST_TARGET): $(BACKPRESSURE_TEST_SRC)
 	mkdir -p build
 	$(CXX) $(BACKPRESSURE_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(BACKPRESSURE_TEST_TARGET)
 
+$(PERSISTENCE_STATE_TEST_TARGET): $(PERSISTENCE_STATE_TEST_SRC)
+	mkdir -p build
+	$(CXX) $(PERSISTENCE_STATE_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(PERSISTENCE_STATE_TEST_TARGET)
+
+$(PERSISTENCE_STORE_TEST_TARGET): $(PERSISTENCE_STORE_TEST_SRC)
+	mkdir -p build
+	$(CXX) $(PERSISTENCE_STORE_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(PERSISTENCE_STORE_TEST_TARGET)
+
 $(ROOM_STATE_MACHINE_TEST_TARGET): $(ROOM_STATE_MACHINE_TEST_SRC)
 	mkdir -p build
 	$(CXX) $(ROOM_STATE_MACHINE_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(ROOM_STATE_MACHINE_TEST_TARGET)
@@ -296,6 +331,13 @@ test-room-service: $(ROOM_SERVICE_TEST_TARGET)
 
 test-backpressure: $(BACKPRESSURE_TEST_TARGET)
 	./$(BACKPRESSURE_TEST_TARGET)
+
+test-persistence-state: $(PERSISTENCE_STATE_TEST_TARGET)
+	./$(PERSISTENCE_STATE_TEST_TARGET)
+
+test-persistence-store: $(PERSISTENCE_STORE_TEST_TARGET)
+	timeout 30s ./$(PERSISTENCE_STORE_TEST_TARGET)
+
 test-room-state-machine: $(ROOM_STATE_MACHINE_TEST_TARGET)
 	./$(ROOM_STATE_MACHINE_TEST_TARGET)
 
@@ -324,7 +366,9 @@ test-all: test-buffer \
           test-room-state-machine \
           test-game-state \
           test-tick \
-          test-backpressure
+          test-backpressure \
+          test-persistence-state \
+          test-persistence-store
 
 slow-echo-client: $(SLOW_ECHO_CLIENT_TARGET)
 
@@ -354,3 +398,5 @@ clean:
 		test-game-state \
 		test-tick \
 		test-heartbeat-timeout \
+		test-persistence-state \
+		test-persistence-store \

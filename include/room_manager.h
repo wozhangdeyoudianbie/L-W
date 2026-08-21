@@ -102,7 +102,9 @@ public:
     ChatResult chat(std::uint32_t room_id, std::uint64_t player_id, const std::string &message) const;   // 稳定身份：发言
     CommandResult move(std::uint32_t room_id, std::uint64_t player_id, std::int32_t dx, std::int32_t dy);   // 稳定身份：移动
     CommandResult attack(std::uint32_t room_id, std::uint64_t player_id, std::uint64_t target_player_id);   // 稳定身份：攻击
-    std::vector<TickResult> tick_rooms();                                                // 推进所有运行中房间
+    std::vector<TickResult> tick_rooms();     // 推进所有运行中房间
+    bool make_checkpoint(std::vector<RoomCheckpoint> &checkpoints) const;  //生成全部房间快照
+    bool restore_checkpoint(const std::vector<RoomCheckpoint> checkpoint);  //全部恢复房间检查点业务数据
 private:
     std::unordered_map<std::uint32_t, std::unique_ptr<Room>> rooms_;
 };
