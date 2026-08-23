@@ -5,3 +5,4 @@ server.log
 test_http
 *.o
 .vscode/
+benchmarks/results/

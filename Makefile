@@ -179,8 +179,13 @@ PERSISTENCE_STORE_TEST_SRC = tests/persistence_store_test.cpp \
                              src/checkpoint_codec.cpp \
                              src/checkpoint_store.cpp
 
+LOAD_CHECKPOINT_GENERATOR_TARGET = build/load_checkpoint_generator
+LOAD_CHECKPOINT_GENERATOR_SRC = benchmarks/load_checkpoint_generator.cpp \
+                                src/checkpoint_codec.cpp \
+                                src/checkpoint_store.cpp
+
 SLOW_ECHO_CLIENT_TARGET = build/slow_echo_client
-SLOW_ECHO_CLIENT_SRC = tests/slow_echo_client.cpp
+SLOW_ECHO_CLIENT_SRC = benchmarks/slow_echo_client.cpp
 
 HEARTBEAT_TIMEOUT_CLIENT_TARGET = build/heartbeat_timeout_client
 HEARTBEAT_TIMEOUT_CLIENT_SRC = tests/heartbeat_timeout_client.cpp \
@@ -274,6 +279,12 @@ $(PERSISTENCE_STATE_TEST_TARGET): $(PERSISTENCE_STATE_TEST_SRC)
 $(PERSISTENCE_STORE_TEST_TARGET): $(PERSISTENCE_STORE_TEST_SRC)
 	mkdir -p build
 	$(CXX) $(PERSISTENCE_STORE_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(PERSISTENCE_STORE_TEST_TARGET)
+
+$(LOAD_CHECKPOINT_GENERATOR_TARGET): $(LOAD_CHECKPOINT_GENERATOR_SRC)
+	mkdir -p build
+	$(CXX) $(LOAD_CHECKPOINT_GENERATOR_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(LOAD_CHECKPOINT_GENERATOR_TARGET)
+
+load-checkpoint-generator: $(LOAD_CHECKPOINT_GENERATOR_TARGET)
 
 $(ROOM_STATE_MACHINE_TEST_TARGET): $(ROOM_STATE_MACHINE_TEST_SRC)
 	mkdir -p build
@@ -389,6 +400,7 @@ clean:
         test-room \
         test-room-manager \
         test-all \
+        load-checkpoint-generator \
         slow-echo-client \
         clean \
 		test-tcp-server-closed-callback \
