@@ -110,6 +110,7 @@ bool LoadGen::run()
     }
     if (!initialize())
     {
+        record_failure("initialize_failed");
         state_ = States::failed;
         cleanup();
         return false;
@@ -137,10 +138,63 @@ const LoadGen::Result &LoadGen::result() const
     return result_;
 }
 
+// 转换：压测阶段转报告文字
+const char *LoadGen::state_name(States state)
+{
+    switch (state)
+    {
+        case States::created:
+            return "created";
+        case States::ramp_up:
+            return "ramp_up";
+        case States::warm_up:
+            return "warm_up";
+        case States::measure:
+            return "measure";
+        case States::drain:
+            return "drain";
+        case States::finished:
+            return "finished";
+        case States::failed:
+            return "failed";
+    }
+    return "unknown";
+}
+
+// 转换：失败分类转报告文字
+const char *LoadGen::failure_name(Failurestates failure)
+{
+    switch (failure)
+    {
+        case Failurestates::connect_error:
+            return "connect_error";
+        case Failurestates::connect_timeout:
+            return "connect_timeout";
+        case Failurestates::join_error:
+            return "join_error";
+        case Failurestates::join_timeout:
+            return "join_timeout";
+        case Failurestates::socket_error:
+            return "socket_error";
+        case Failurestates::protocol_error:
+            return "protocol_error";
+        case Failurestates::unexpected_close:
+            return "unexpected_close";
+    }
+    return "unknown";
+}
+
+// 转换：系统错误转报告原因
+std::string LoadGen::make_system_error_reason(const char *operation, int error_number)
+{
+    const std::string operation_name = operation ? operation : "system_call";
+    return operation_name + ": errno = " + std::to_string(error_number) + " " + std::strerror(error_number);
+}
+
 // 写报告：把统计结果输出到指定目录（目录不存在则创建）
 bool LoadGen::write_report(const std::string &directory) const
 {
-    if (state_ != States::finished)
+    if (state_ != States::finished && state_ != States::failed)
     {
         return false;
     }
@@ -170,13 +224,12 @@ bool LoadGen::write_report(const std::string &directory) const
     std::ofstream heartbeat_rtt_report(heartbeat_rtt_path, std::ios::out);
     std::ofstream snapshot_interval_report(snapshot_interval_path, std::ios::out);
     std::ofstream scheduler_lag_report(scheduler_lag_path, std::ios::out);
-    if (!report.is_open() || !heartbeat_rtt_report.is_open() ||
-        !snapshot_interval_report.is_open() || !scheduler_lag_report.is_open())
+    if (!report.is_open() || !heartbeat_rtt_report.is_open() || !snapshot_interval_report.is_open() || !scheduler_lag_report.is_open())
     {
         return false;
     }
     report << std::boolalpha << std::fixed << std::setprecision(3);
-    report << "state = finished" << endl;
+    report << "state = " << state_name(state_) << endl;
     report << "config.address = " << config_.address << endl;
     report << "config.port = " << config_.port << endl;
     report << "config.client_count = " << config_.client_count << endl;
@@ -189,6 +242,18 @@ bool LoadGen::write_report(const std::string &directory) const
     report << "config.warm_up_ms = " << config_.warm_up_ms << endl;
     report << "config.measure_ms = " << config_.measure_ms << endl;
     report << "config.drain_ms = " << config_.drain_ms << endl;
+    report << "result.first_failure.recorded = " << result_.first_failure.recorded << endl;
+    if (result_.first_failure.recorded)
+    {
+        report << "result.first_failure.state = " << state_name(result_.first_failure.state) << endl;
+        report << "result.first_failure.reason = " << result_.first_failure.reason << endl;
+        report << "result.first_failure.has_client = " << result_.first_failure.has_client << endl;
+        if (result_.first_failure.has_client)
+        {
+            report << "result.first_failure.client_index = " << result_.first_failure.client_index << endl;
+        }
+        report << "result.first_failure.active_clients = " << result_.first_failure.active_clients << endl;
+    }
     report << "result.connection_attempts = " << result_.connection_attempts << endl;
     report << "result.connection_successes = " << result_.connection_successes << endl;
     report << "result.connection_failures = " << result_.connection_failures << endl;
@@ -239,8 +304,7 @@ bool LoadGen::write_report(const std::string &directory) const
     heartbeat_rtt_report.flush();
     snapshot_interval_report.flush();
     scheduler_lag_report.flush();
-    return report.good() && heartbeat_rtt_report.good() &&
-        snapshot_interval_report.good() && scheduler_lag_report.good();
+    return report.good() && heartbeat_rtt_report.good() && snapshot_interval_report.good() && scheduler_lag_report.good();
 }
 
 // 校验：检查配置参数合法性
@@ -259,8 +323,7 @@ bool LoadGen::validate_config() const
     {
         return false;
     }
-    if (config_.move_interval_ms < 50 ||
-        config_.room_capacity > std::numeric_limits<std::uint16_t>::max())
+    if (config_.move_interval_ms < 50 || config_.room_capacity > std::numeric_limits<std::uint16_t>::max())
     {
         return false;
     }
@@ -289,15 +352,21 @@ bool LoadGen::initialize()
 {
     if (epoll_fd_ != -1)
     {
+        record_failure("initialize_epoll_already_exists");
         return false;
     }
     if (!clients_.empty())
     {
+        record_failure("initialize_clients_not_empty");
         return false;
     }
+
     epoll_fd_ = epoll_create1(EPOLL_CLOEXEC);
     if (epoll_fd_ == -1)
     {
+        const int epoll_error = errno;
+        record_failure(
+            make_system_error_reason("epoll_create1", epoll_error));
         return false;
     }
     return true;
@@ -333,6 +402,7 @@ bool LoadGen::run_loop()
                 {
                     if (!start_due_clients(now))
                     {
+                        record_failure("start_due_clients_failed");
                         transition_to(States::failed, now);
                         break;
                     }
@@ -368,6 +438,7 @@ bool LoadGen::run_loop()
                 }
             case States::created:
                 {
+                    record_failure("run_loop_entered_created_state");
                     transition_to(States::failed, now);
                     break;
                 }
@@ -401,6 +472,7 @@ bool LoadGen::run_loop()
         int timeout = calculate_wait_timeout_ms(now);
         if (!poll_once(timeout))
         {
+            record_failure("poll_once_failed");
             transition_to(States::failed, now);
         }
     }
@@ -469,6 +541,7 @@ bool LoadGen::start_due_clients(Clock::time_point now)
     const auto connect = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(1.0 / static_cast<double>(config_.connections_per_second)));
     if (connect <= Clock::duration::zero())
     {
+        record_failure("connection_interval_not_positive");
         return false;
     }
     while (next_client_index_ < config_.client_count && now >= next_connect_time_)
@@ -489,6 +562,8 @@ bool LoadGen::create_client(std::size_t index, Clock::time_point now)
     int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
     if (fd == -1)
     {
+        const int socket_error = errno;
+        record_failure(index, make_system_error_reason("socket", socket_error));
         return false;
     }
     sockaddr_in address{};
@@ -496,6 +571,7 @@ bool LoadGen::create_client(std::size_t index, Clock::time_point now)
     address.sin_port = htons(config_.port);
     if (inet_pton(AF_INET, config_.address.c_str(), &address.sin_addr) != 1)
     {
+        record_failure(index, "inet_pton_failed");
         close(fd);
         return false;
     }
@@ -509,7 +585,11 @@ bool LoadGen::create_client(std::size_t index, Clock::time_point now)
     const int connect_result = connect(fd, reinterpret_cast<sockaddr *>(&address), sizeof(address));
     if (connect_result == -1 && errno != EINPROGRESS)
     {
+        const int connect_error = errno;
         ++result_.connection_failures;
+        record_failure(
+            index,
+            make_system_error_reason("connect", connect_error));
         close(fd);
         return false;
     }
@@ -517,6 +597,7 @@ bool LoadGen::create_client(std::size_t index, Clock::time_point now)
     if (!insert_result.second)
     {
         ++result_.connection_failures;
+        record_failure(index, "clients_emplace_duplicate_fd");
         close(fd);
         return false;
     }
@@ -525,6 +606,10 @@ bool LoadGen::create_client(std::size_t index, Clock::time_point now)
     event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET;
     if (epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &event) == -1)
     {
+        const int epoll_error = errno;
+        record_failure(
+            index,
+            make_system_error_reason("epoll_ctl_add", epoll_error));
         clients_.erase(fd);
         ++result_.connection_failures;
         close(fd);
@@ -644,7 +729,15 @@ bool LoadGen::poll_once(int timeout_ms)
     const int event_count = epoll_wait(epoll_fd_, events, MAX_EVENTS, timeout_ms);
     if (event_count == -1)
     {
-        return errno == EINTR;
+        if (errno == EINTR)
+        {
+            return true;
+        }
+
+        const int epoll_error = errno;
+        record_failure(
+            make_system_error_reason("epoll_wait", epoll_error));
+        return false;
     }
     for (int i = 0;i < event_count;i++)
     {
@@ -656,6 +749,7 @@ bool LoadGen::poll_once(int timeout_ms)
         }
         if (!update_client_events(it->second, events[i].events))
         {
+            record_failure("update_client_events_failed");
             return false;
         }
     }
@@ -774,6 +868,15 @@ bool LoadGen::update_client_events(const Client &client, std::uint32_t events)
             }
             if (it->second.state == Clientstates::failed)
             {
+                const Failurestates failure =
+                    state_before_read == Clientstates::joining
+                    ? Failurestates::join_error
+                    : Failurestates::protocol_error;
+
+                record_failure(
+                    it->second.index,
+                    failure_name(failure));
+
                 close_client(fd, Clientstates::failed);
                 transition_to(States::failed, now);
                 return false;
@@ -1076,15 +1179,31 @@ bool LoadGen::process_frame(Client &client, std::uint16_t type, const std::strin
                 {
                     return protocol_failure();
                 }
-                if (error_code < static_cast<std::uint16_t>(ErrorCode::room_not_found) || error_code > static_cast<std::uint16_t>(ErrorCode::resume_failed))
+                if (error_code <
+                        static_cast<std::uint16_t>(
+                            ErrorCode::room_not_found) ||
+                    error_code >
+                        static_cast<std::uint16_t>(
+                            ErrorCode::resume_failed))
                 {
                     return protocol_failure();
                 }
+
+                const std::string reason =
+                    "server_error: request_type=" +
+                    std::to_string(request_type) +
+                    " error_code=" +
+                    std::to_string(error_code);
+
+                record_failure(client.index, reason);
+
                 ++result_.error_frames;
+
                 if (client.state == Clientstates::joining)
                 {
                     ++result_.join_failures;
                 }
+
                 client.state = Clientstates::failed;
                 return false;
             }
@@ -1169,12 +1288,54 @@ bool LoadGen::queue_frame(Client &client, std::uint16_t type, const std::string 
     return true;
 }
 
+std::size_t LoadGen::active_client_count() const
+{
+    std::size_t cnt = 0;
+    for (auto &it : clients_)
+    {
+        if (it.second.state == Clientstates::active)
+        {
+            ++cnt;
+        }
+    }
+    return cnt;
+}
+
+void LoadGen::record_failure(const std::string &reason)
+{
+    if (result_.first_failure.recorded)
+    {
+        return;
+    }
+    result_.first_failure.state = state_;
+    result_.first_failure.reason = reason;
+    result_.first_failure.has_client = false;
+    result_.first_failure.client_index = 0;
+    result_.first_failure.active_clients = active_client_count();
+    result_.first_failure.recorded = true;
+}
+
+void LoadGen::record_failure(std::size_t client_index, const std::string &reason)
+{
+    if (result_.first_failure.recorded)
+    {
+        return;
+    }
+    result_.first_failure.state = state_;
+    result_.first_failure.reason = reason;
+    result_.first_failure.has_client = true;
+    result_.first_failure.client_index = client_index;
+    result_.first_failure.active_clients = active_client_count();
+    result_.first_failure.recorded = true;
+}
+
 // 失败：记录失败原因并关闭连接
 void LoadGen::fail_client(int fd, Failurestates failure)
 {
     auto it = clients_.find(fd);
     if (it == clients_.end())
     {
+        record_failure("fail_client_unknown_fd");
         transition_to(States::failed, Clock::now());
         return;
     }
@@ -1215,6 +1376,7 @@ void LoadGen::fail_client(int fd, Failurestates failure)
                 break;
             }
     }
+    record_failure(it->second.index, failure_name(failure));
     close_client(fd, Clientstates::failed);
     transition_to(States::failed, Clock::now());
 }

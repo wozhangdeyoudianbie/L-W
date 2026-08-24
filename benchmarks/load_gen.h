@@ -45,6 +45,15 @@ public:
         double p99_ms = 0.0;
         double maximum_ms = 0.0;
     };
+    struct Failure
+    {
+        bool recorded = false;
+        States state = States::created;
+        std::string reason;
+        bool has_client = false;
+        std::size_t client_index = 0;
+        std::size_t active_clients = 0;
+    };
     struct Result
     {
         std::size_t connection_attempts = 0;
@@ -69,6 +78,7 @@ public:
         SampleSummary scheduler_lag;
         bool workload_completed = false;
         bool correctness_passed = false;
+        Failure first_failure;
     };
     explicit LoadGen(Config config);          // 构造：保存配置并初始化资源句柄
     ~LoadGen();                               // 析构：清理资源
@@ -78,7 +88,7 @@ public:
     bool run();                               // 执行压测全流程
     States states() const;                    // 查询：当前阶段状态
     const Result &result() const;             // 查询：压测统计结果（仅结束后有意义）
-    bool write_report(const std::string &directory) const;    // 写报告：统计结果输出到指定目录
+    bool write_report(const std::string &directory) const;    // 写报告：成功或失败结果输出到指定目录
 private:
     using Clock = std::chrono::steady_clock;
     enum class Clientstates
@@ -141,12 +151,18 @@ private:
     bool queue_heartbeat(Client &client, Clock::time_point now);   // 排队：构造心跳帧
     bool queue_move(Client &client);                         // 排队：构造 move 帧
     bool queue_frame(Client &client, std::uint16_t type, const std::string &payload);   // 排队：编码一帧追加到写缓冲
+    void record_failure(const std::string &reason);          // 记录：保存无具体客户端的第一次失败
+    void record_failure(std::size_t client_index, const std::string &reason);  // 记录：保存具体客户端的第一次失败
+    std::size_t active_client_count() const;                 // 统计：当前 active 客户端数量
     void fail_client(int fd, Failurestates failure);         // 失败：记录原因并关闭连接
     void close_client(int fd, Clientstates final_state);     // 关闭：以指定终态关闭并更新统计
     void record_snapshot(Client &client, std::uint64_t tick_id, Clock::time_point now); // 记录快照：统计间隔与 tick 缺口
     void record_heartbeat_ack(Client &client, std::uint64_t seq, Clock::time_point now); // 记录心跳 ack：统计往返时延
     void record_scheduler_lag(Clock::time_point expected, Clock::time_point actual);     // 记录调度延迟：保存落后样本
     void finalize_result();                                  // 汇总：填充 Result 派生统计
+    static const char *state_name(States state);             // 转换：压测阶段转报告文字
+    static const char *failure_name(Failurestates failure);  // 转换：失败分类转报告文字
+    static std::string make_system_error_reason(const char *operation, int error_number);   // 转换：系统错误转报告原因
     static SampleSummary summarize_samples(std::vector<std::uint64_t> samples);         // 汇总样本：p50/p95/p99 与最大值
     Config config_;
     bool valid_;

@@ -6,3 +6,5 @@ test_http
 *.o
 .vscode/
 benchmarks/results/
+data/
+*.orig

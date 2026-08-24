@@ -191,6 +191,13 @@ LOAD_GEN_SRC = benchmarks/load_gen_main.cpp \
                src/codec.cpp \
                src/protocol.cpp
 
+LOAD_GEN_FAILURE_TEST_TARGET = build/load_gen_failure_test
+LOAD_GEN_FAILURE_TEST_SRC = tests/load_gen_failure_test.cpp \
+                            benchmarks/load_gen.cpp \
+                            src/buffer.cpp \
+                            src/codec.cpp \
+                            src/protocol.cpp
+
 SLOW_ECHO_CLIENT_TARGET = build/slow_echo_client
 SLOW_ECHO_CLIENT_SRC = benchmarks/slow_echo_client.cpp
 
@@ -299,6 +306,13 @@ $(LOAD_GEN_TARGET): $(LOAD_GEN_SRC)
 
 load-gen: $(LOAD_GEN_TARGET)
 
+$(LOAD_GEN_FAILURE_TEST_TARGET): $(LOAD_GEN_FAILURE_TEST_SRC)
+	mkdir -p build
+	$(CXX) $(LOAD_GEN_FAILURE_TEST_SRC) $(CXXFLAGS) -Ibenchmarks $(LDFLAGS) -o $(LOAD_GEN_FAILURE_TEST_TARGET)
+
+test-load-gen-failure: $(LOAD_GEN_TARGET) $(LOAD_GEN_FAILURE_TEST_TARGET)
+	./$(LOAD_GEN_FAILURE_TEST_TARGET)
+
 $(ROOM_STATE_MACHINE_TEST_TARGET): $(ROOM_STATE_MACHINE_TEST_SRC)
 	mkdir -p build
 	$(CXX) $(ROOM_STATE_MACHINE_TEST_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(ROOM_STATE_MACHINE_TEST_TARGET)
@@ -392,7 +406,8 @@ test-all: test-buffer \
           test-tick \
           test-backpressure \
           test-persistence-state \
-          test-persistence-store
+          test-persistence-store \
+          test-load-gen-failure
 
 slow-echo-client: $(SLOW_ECHO_CLIENT_TARGET)
 
@@ -425,4 +440,5 @@ clean:
 		test-tick \
 		test-heartbeat-timeout \
 		test-persistence-state \
-		test-persistence-store
+		test-persistence-store \
+        test-load-gen-failure
