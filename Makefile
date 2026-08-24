@@ -184,6 +184,13 @@ LOAD_CHECKPOINT_GENERATOR_SRC = benchmarks/load_checkpoint_generator.cpp \
                                 src/checkpoint_codec.cpp \
                                 src/checkpoint_store.cpp
 
+LOAD_GEN_TARGET = build/load_gen
+LOAD_GEN_SRC = benchmarks/load_gen_main.cpp \
+               benchmarks/load_gen.cpp \
+               src/buffer.cpp \
+               src/codec.cpp \
+               src/protocol.cpp
+
 SLOW_ECHO_CLIENT_TARGET = build/slow_echo_client
 SLOW_ECHO_CLIENT_SRC = benchmarks/slow_echo_client.cpp
 
@@ -285,6 +292,12 @@ $(LOAD_CHECKPOINT_GENERATOR_TARGET): $(LOAD_CHECKPOINT_GENERATOR_SRC)
 	$(CXX) $(LOAD_CHECKPOINT_GENERATOR_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(LOAD_CHECKPOINT_GENERATOR_TARGET)
 
 load-checkpoint-generator: $(LOAD_CHECKPOINT_GENERATOR_TARGET)
+
+$(LOAD_GEN_TARGET): $(LOAD_GEN_SRC)
+	mkdir -p build
+	$(CXX) $(LOAD_GEN_SRC) $(CXXFLAGS) $(LDFLAGS) -o $(LOAD_GEN_TARGET)
+
+load-gen: $(LOAD_GEN_TARGET)
 
 $(ROOM_STATE_MACHINE_TEST_TARGET): $(ROOM_STATE_MACHINE_TEST_SRC)
 	mkdir -p build
@@ -402,6 +415,7 @@ clean:
         test-all \
         load-checkpoint-generator \
         slow-echo-client \
+        load-gen \
         clean \
 		test-tcp-server-closed-callback \
 		test-room-service \
@@ -411,4 +425,4 @@ clean:
 		test-tick \
 		test-heartbeat-timeout \
 		test-persistence-state \
-		test-persistence-store \
+		test-persistence-store

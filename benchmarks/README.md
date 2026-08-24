@@ -6,7 +6,7 @@
 
 - `load_checkpoint_generator.cpp`：生成包含大量房间的检查点，用于准备恢复和启动压测数据。
 - `slow_echo_client.cpp`：发送大块数据后暂停读取，用于观察服务端背压和慢客户端处理。
-- `load_gen.h`：当前为空且未被构建引用，暂时保留在压测目录中。
+- `load_gen.h`：LoadGen压测器的完整接口、客户端状态与结果统计定义。
 
 构建命令保持不变：
 
