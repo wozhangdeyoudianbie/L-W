@@ -174,6 +174,8 @@ const char *LoadGen::failure_name(Failurestates failure)
             return "join_error";
         case Failurestates::join_timeout:
             return "join_timeout";
+        case Failurestates::heartbeat_timeout:
+            return "heartbeat_timeout";
         case Failurestates::socket_error:
             return "socket_error";
         case Failurestates::protocol_error:
@@ -697,7 +699,7 @@ void LoadGen::check_client_deadlines(Clock::time_point now)
         {
             if (now >= heartbeat.second + heartbeat_timeout)
             {
-                fail_client(fd, Failurestates::socket_error);
+                fail_client(fd, Failurestates::heartbeat_timeout);
                 return;
             }
         }
@@ -733,7 +735,6 @@ bool LoadGen::poll_once(int timeout_ms)
         {
             return true;
         }
-
         const int epoll_error = errno;
         record_failure(
             make_system_error_reason("epoll_wait", epoll_error));
@@ -868,15 +869,8 @@ bool LoadGen::update_client_events(const Client &client, std::uint32_t events)
             }
             if (it->second.state == Clientstates::failed)
             {
-                const Failurestates failure =
-                    state_before_read == Clientstates::joining
-                    ? Failurestates::join_error
-                    : Failurestates::protocol_error;
-
-                record_failure(
-                    it->second.index,
-                    failure_name(failure));
-
+                const Failurestates failure = state_before_read == Clientstates::joining ? Failurestates::join_error : Failurestates::protocol_error;
+                record_failure(it->second.index, failure_name(failure));
                 close_client(fd, Clientstates::failed);
                 transition_to(States::failed, now);
                 return false;
@@ -903,6 +897,21 @@ bool LoadGen::update_client_events(const Client &client, std::uint32_t events)
     }
     if ((events & EPOLLERR) != 0)
     {
+        int socket_error = 0;
+        socklen_t error_size = sizeof(socket_error);
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &socket_error, &error_size) == -1)
+        {
+            const int getsockopt_error = errno;
+            record_failure(it->second.index, make_system_error_reason("getsockopt", getsockopt_error));
+        }
+        else if (socket_error != 0)
+        {
+            record_failure(it->second.index, make_system_error_reason("epoll_socket_error", socket_error));
+        }
+        else
+        {
+            record_failure(it->second.index, "epoll_error_without_socket_error");
+        }
         fail_client(fd, Failurestates::socket_error);
         return false;
     }
@@ -924,8 +933,15 @@ bool LoadGen::finish_connect(Client &client, Clock::time_point now)
     }
     int socket_error = 0;
     socklen_t error_size = sizeof(socket_error);
-    if (getsockopt(client.fd, SOL_SOCKET, SO_ERROR, &socket_error, &error_size) == -1 || socket_error != 0)
+    if (getsockopt(client.fd, SOL_SOCKET, SO_ERROR, &socket_error, &error_size) == -1)
     {
+        const int getsockopt_error = errno;
+        record_failure(client.index, make_system_error_reason("getsockopt", getsockopt_error));
+        return false;
+    }
+    if (socket_error != 0)
+    {
+        record_failure(client.index, make_system_error_reason("connect", socket_error));
         return false;
     }
     ++result_.connection_successes;
@@ -960,6 +976,8 @@ bool LoadGen::read_from_client(Client &client, Clock::time_point now)
         {
             break;
         }
+        const int read_error = errno;
+        record_failure(client.index, make_system_error_reason("recv", read_error));
         return false;
     }
     const bool decode_success = Codec::decode(client.read_buffer, [this, &client, now](std::uint16_t type, const std::string &payload)
@@ -1002,6 +1020,7 @@ bool LoadGen::write_to_client(Client &client)
         }
         if (write_size == 0)
         {
+            record_failure(client.index, "send_returned_zero");
             return false;
         }
         if (errno == EINTR)
@@ -1012,6 +1031,8 @@ bool LoadGen::write_to_client(Client &client)
         {
             return true;
         }
+        const int write_error = errno;
+        record_failure(client.index, make_system_error_reason("send", write_error));
         return false;
     }
     return true;
@@ -1181,10 +1202,10 @@ bool LoadGen::process_frame(Client &client, std::uint16_t type, const std::strin
                 }
                 if (error_code <
                         static_cast<std::uint16_t>(
-                            ErrorCode::room_not_found) ||
+                    ErrorCode::room_not_found) ||
                     error_code >
                         static_cast<std::uint16_t>(
-                            ErrorCode::resume_failed))
+                    ErrorCode::resume_failed))
                 {
                     return protocol_failure();
                 }
@@ -1351,6 +1372,10 @@ void LoadGen::fail_client(int fd, Failurestates failure)
         case Failurestates::join_timeout:
             {
                 ++result_.join_failures;
+                break;
+            }
+        case Failurestates::heartbeat_timeout:
+            {
                 break;
             }
         case Failurestates::socket_error:

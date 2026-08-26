@@ -106,6 +106,7 @@ private:
         connect_timeout,
         join_error,
         join_timeout,
+        heartbeat_timeout,
         socket_error,
         protocol_error,
         unexpected_close
